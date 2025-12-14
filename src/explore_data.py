@@ -183,4 +183,3 @@ if __name__ == "__main__":
     print("\n" + "="*70)
     print("DATA EXPLORATION COMPLETED!")
     print("="*70)
-    print("\nNext step: Run feature extraction script")

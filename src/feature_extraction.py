@@ -198,4 +198,3 @@ if __name__ == "__main__":
     print("FEATURE EXTRACTION COMPLETED!")
     print("="*70)
     print("\nExtracted features saved in: data/features/")
-    print("\nNext step: Run training and classification script")

@@ -140,3 +140,125 @@ def preprocess_features(X_train, X_val, X_test, use_pca=True, n_components=None)
     else:
         return X_train_scaled, X_val_scaled, X_test_scaled, scaler, None
 
+def train_and_evaluate(X_train, y_train, X_val, y_val, X_test, y_test, scaler, pca, feature_type):
+    class_names = ['rock', 'paper', 'scissors']
+    classifiers = get_classifiers()
+    
+    print("\n" + "="*70)
+    print("TRAINING AND EVALUATION")
+    print("="*70)
+    
+    results = []
+    trained_models = {}
+    
+    for name, clf in classifiers.items():
+        print(f"\n{'='*70}")
+        print(f"Training: {name}")
+        print('='*70)
+        
+        # Train
+        start_time = time.time()
+        clf.fit(X_train, y_train)
+        training_time = time.time() - start_time
+        
+        # Predict
+        y_val_pred = clf.predict(X_val)
+        y_test_pred = clf.predict(X_test)
+        
+        # Calculate metrics
+        val_accuracy = accuracy_score(y_val, y_val_pred)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        test_precision = precision_score(y_test, y_test_pred, average='weighted')
+        test_recall = recall_score(y_test, y_test_pred, average='weighted')
+        test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+        
+        # Store results
+        results.append({
+            'Classifier': name,
+            'Training Time (s)': round(training_time, 2),
+            'Validation Accuracy (%)': round(val_accuracy * 100, 2),
+            'Test Accuracy (%)': round(test_accuracy * 100, 2),
+            'Precision': round(test_precision, 4),
+            'Recall': round(test_recall, 4),
+            'F1-Score': round(test_f1, 4)
+        })
+        
+        # Store trained model
+        trained_models[name] = clf
+        
+        # Print metrics
+        print(f"Training Time: {training_time:.2f}s")
+        print(f"Validation Accuracy: {val_accuracy*100:.2f}%")
+        print(f"Test Accuracy: {test_accuracy*100:.2f}%")
+        print(f"Precision: {test_precision:.4f}")
+        print(f"Recall: {test_recall:.4f}")
+        print(f"F1-Score: {test_f1:.4f}")
+        
+        # Print classification report
+        print(f"\nClassification Report:")
+        print(classification_report(y_test, y_test_pred, target_names=class_names))
+    
+    # Save results
+    results_df = pd.DataFrame(results)
+    results_df = results_df.sort_values('Test Accuracy (%)', ascending=False)
+    
+    print("\n" + "="*70)
+    print("RESULTS SUMMARY")
+    print("="*70)
+    print("\n" + results_df.to_string(index=False))
+    
+    # Save to CSV
+    os.makedirs('results/metrics', exist_ok=True)
+    results_df.to_csv(f'results/metrics/results_{feature_type}.csv', index=False)
+    print(f"\nResults saved to: results/metrics/results_{feature_type}.csv")
+    
+    return results_df, trained_models
+
+if __name__ == "__main__":
+    print("="*70)
+    print("ROCK-PAPER-SCISSORS CLASSIFICATION")
+    print("="*70)
+    
+    # Check which features are available
+    feature_dir = 'data/features'
+    available_features = []
+    
+    if os.path.exists(f'{feature_dir}/training_handcrafted.pkl'):
+        available_features.append('handcrafted')
+    if os.path.exists(f'{feature_dir}/training_deep_mobilenet.pkl'):
+        available_features.append('deep_mobilenet')
+    
+    if not available_features:
+        print("\nError: No feature files found!")
+        print("Please run feature extraction script first.")
+        exit()
+    
+    print("\nAvailable features:")
+    for i, feat in enumerate(available_features, 1):
+        print(f"{i}. {feat}")
+    
+    # Select feature type
+    if len(available_features) == 1:
+        feature_type = available_features[0]
+        print(f"\nUsing {feature_type} features")
+    else:
+        choice = input("\nSelect feature type (1/2): ").strip()
+        feature_type = available_features[int(choice)-1]
+    
+    # Load features
+    X_train, y_train, X_val, y_val, X_test, y_test = load_features(feature_type)
+    
+    # Preprocess features
+    X_train_proc, X_val_proc, X_test_proc, scaler, pca = preprocess_features(
+        X_train, X_val, X_test, use_pca=True
+    )
+    
+    # Train and evaluate
+    results_df, trained_models = train_and_evaluate(
+        X_train_proc, y_train, X_val_proc, y_val, X_test_proc, y_test,
+        scaler, pca, feature_type
+    )
+    
+    print("\n" + "="*70)
+    print("TRAINING AND CLASSIFICATION COMPLETED!")
+    print("="*70)

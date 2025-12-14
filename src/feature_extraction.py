@@ -6,14 +6,10 @@ from skimage.filters import sobel
 from skimage.transform import resize
 import pickle
 import os
-try:
-    from tensorflow.keras.applications import VGG16, ResNet50, MobileNetV2
-    from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_preprocess
-    from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess
-    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
-except ImportError:
-    print("TensorFlow not found. Install with: pip install tensorflow")
-    VGG16 = ResNet50 = MobileNetV2 = None
+from tensorflow.keras.applications import VGG16, ResNet50, MobileNetV2
+from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_preprocess
+from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
 
 from explore_data import load_images_and_labels
 

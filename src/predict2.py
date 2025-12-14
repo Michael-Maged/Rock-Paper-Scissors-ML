@@ -6,6 +6,8 @@ from skimage.filters import sobel
 import pickle
 import matplotlib.pyplot as plt
 from pathlib import Path
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 def load_model(model_path='models/best_model_handcrafted.pkl'):
     print("="*70)
@@ -68,8 +70,6 @@ def extract_features_from_image(img_array, feature_type='handcrafted', target_si
     else:  # deep features
         # For deep features, you'd need to use the CNN model
         # This is simplified - in practice, load the CNN and extract features
-        from tensorflow.keras.applications import MobileNetV2
-        from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
         
         # Ensure 3 channels
         if len(img_resized.shape) == 2:

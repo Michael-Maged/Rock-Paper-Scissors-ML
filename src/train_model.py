@@ -15,7 +15,7 @@ import seaborn as sns
 import xgboost as xgb
 
 # Import from data loading module
-from feature_extraction import extract_handcrafted_features, LABEL_MAP
+from feature_extraction import extract_features_handcrafted, LABEL_MAP
 
 MODEL_DIR = Path(__file__).parent.parent / "models"
 RESULTS_DIR = Path(__file__).parent.parent / "results"
@@ -395,15 +395,15 @@ def main():
     print("="*60)
     
     print("\nLoading training data...")
-    X_train, y_train = extract_handcrafted_features("training")
+    X_train, y_train = extract_features_handcrafted("training")
     print(f"Training samples: {len(X_train)}, Features: {X_train.shape[1]}")
     
     print("\nLoading validation data...")
-    X_val, y_val = extract_handcrafted_features("validation")
+    X_val, y_val = extract_features_handcrafted("validation")
     print(f"Validation samples: {len(X_val)}")
     
     print("\nLoading test data...")
-    X_test, y_test = extract_handcrafted_features("testing")
+    X_test, y_test = extract_features_handcrafted("testing")
     print(f"Test samples: {len(X_test)}")
     
     # Step II: Features already extracted in load_data.py

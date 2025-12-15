@@ -2,7 +2,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 LABEL_MAP = {"rock": 0, "paper": 1, "scissors": 2}
@@ -104,12 +103,12 @@ def analyze_image_properties():
     
     aspect_ratios = [w/h for w, h in zip(widths, heights)]
     
-    print(f"\nImage Dimensions:")
+    print("\nImage Dimensions:")
     print(f"  Width  - Min: {min(widths)}, Max: {max(widths)}, Avg: {np.mean(widths):.1f}")
     print(f"  Height - Min: {min(heights)}, Max: {max(heights)}, Avg: {np.mean(heights):.1f}")
-    print(f"\nAspect Ratios:")
+    print("\nAspect Ratios:")
     print(f"  Min: {min(aspect_ratios):.2f}, Max: {max(aspect_ratios):.2f}, Avg: {np.mean(aspect_ratios):.2f}")
-    print(f"\nRecommended target size: (224, 224)")
+    print("\nRecommended target size: (224, 224)")
     
     return (224, 224)
 
@@ -135,7 +134,7 @@ def load_images_and_labels(split="training"):
                     images.append(np.array(img))
                     labels.append(label)
     
-    return np.array(images), np.array(labels)
+    return images, labels
 
 def visualize_sample_images():
     print("\n" + "="*70)

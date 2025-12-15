@@ -4,10 +4,19 @@ from skimage.transform import resize
 from skimage.feature import hog
 from skimage.filters import sobel
 import pickle
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from pathlib import Path
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    from keras.applications import MobileNetV2
+    from keras.applications.mobilenet_v2 import preprocess_input
+except ImportError:
+    MobileNetV2 = None
+    preprocess_input = None
 
 def load_model(model_path='models/best_model_handcrafted.pkl'):
     print("="*70)
@@ -153,7 +162,7 @@ def batch_predict(image_folder, model, scaler, pca, class_names, feature_type):
     print("="*70)
     
     image_folder = Path(image_folder)
-    image_files = list(image_folder.glob('*.png')) + list(image_folder.glob('*.jpg'))
+    image_files = list(image_folder.glob('*.png')) + list(image_folder.glob('*.jpg')) + list(image_folder.glob('*.jpeg'))
     
     print(f"Found {len(image_files)} images")
     
@@ -173,7 +182,6 @@ def batch_predict(image_folder, model, scaler, pca, class_names, feature_type):
     return results
 
 if __name__ == "__main__":
-    import sys
     
     print("="*70)
     print("ROCK-PAPER-SCISSORS PREDICTION")

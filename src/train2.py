@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.tree import DecisionTreeClassifier
@@ -212,6 +214,25 @@ def train_and_evaluate(X_train, y_train, X_val, y_val, X_test, y_test, scaler, p
     results_df.to_csv(f'results/metrics/results_{feature_type}.csv', index=False)
     print(f"\nResults saved to: results/metrics/results_{feature_type}.csv")
     
+    # Save best model
+    best_model_name = results_df.iloc[0]['Classifier']
+    best_model = trained_models[best_model_name]
+    
+    os.makedirs('models', exist_ok=True)
+    model_data = {
+        'model': best_model,
+        'scaler': scaler,
+        'pca': pca,
+        'class_names': class_names,
+        'feature_type': feature_type
+    }
+    
+    model_path = f'models/best_model_{feature_type}.pkl'
+    with open(model_path, 'wb') as f:
+        pickle.dump(model_data, f)
+    
+    print(f"\nBest model ({best_model_name}) saved to: {model_path}")
+    
     return results_df, trained_models
 
 if __name__ == "__main__":
@@ -254,6 +275,10 @@ if __name__ == "__main__":
     )
     
     # Train and evaluate
+    results_df, trained_models = train_and_evaluate(
+        X_train_proc, y_train, X_val_proc, y_val, X_test_proc, y_test, 
+        scaler, pca, feature_type
+    )
     results_df, trained_models = train_and_evaluate(
         X_train_proc, y_train, X_val_proc, y_val, X_test_proc, y_test,
         scaler, pca, feature_type

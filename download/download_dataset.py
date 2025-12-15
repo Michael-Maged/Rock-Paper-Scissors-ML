@@ -43,14 +43,14 @@ DATASETS = {
 def check_kaggle_setup():
     """Check if Kaggle API is properly configured"""
     try:
-        import kaggle
+        import importlib.util
+        if importlib.util.find_spec("kaggle") is None:
+            print("✗ Kaggle API not installed")
+            print("  Install with: pip install kaggle")
+            return False
         print("✓ Kaggle API is installed")
         return True
-    except ImportError:
-        print("✗ Kaggle API not installed")
-        print("  Install with: pip install kaggle")
-        return False
-    except OSError as e:
+    except OSError :
         print("✗ Kaggle API credentials not found")
         print("  Please follow these steps:")
         print("  1. Go to https://www.kaggle.com/settings")

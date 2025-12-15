@@ -1,15 +1,22 @@
-from pathlib import Path
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow info messages
+
 import numpy as np
-from PIL import Image
 from skimage.feature import hog
 from skimage.filters import sobel
 from skimage.transform import resize
 import pickle
 import os
-from tensorflow.keras.applications import VGG16, ResNet50, MobileNetV2
-from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_preprocess
-from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
+try:
+    from keras.applications import VGG16, ResNet50, MobileNetV2
+    from keras.applications.vgg16 import preprocess_input as vgg_preprocess
+    from keras.applications.resnet50 import preprocess_input as resnet_preprocess
+    from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
+    TENSORFLOW_AVAILABLE = True
+except ImportError:
+    VGG16 = ResNet50 = MobileNetV2 = None
+    vgg_preprocess = resnet_preprocess = mobilenet_preprocess = None
+    TENSORFLOW_AVAILABLE = False
 
 from explore_data import load_images_and_labels
 
@@ -86,7 +93,7 @@ def extract_features_handcrafted(split="training", target_size=(224, 224)):
     return features, labels
 
 def extract_features_cnn(split="training", target_size=(224, 224), model_name='MobileNetV2'):
-    if VGG16 is None:
+    if not TENSORFLOW_AVAILABLE:
         raise ImportError("TensorFlow not available. Install with: pip install tensorflow")
     
     print(f"\n{'='*70}")

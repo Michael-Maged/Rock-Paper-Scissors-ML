@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -15,7 +15,7 @@ import seaborn as sns
 import xgboost as xgb
 
 # Import from data loading module
-from feature_extraction import extract_features_handcrafted, LABEL_MAP
+from feature_extraction import extract_features_handcrafted
 
 MODEL_DIR = Path(__file__).parent.parent / "models"
 RESULTS_DIR = Path(__file__).parent.parent / "results"

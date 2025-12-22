@@ -2,7 +2,6 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 import random
 
@@ -25,18 +24,21 @@ def explore_data():
         counts = {}
 
         for gesture in gestures:
-            path = DATA_DIR / gesture
-            if path.exists():
-                all_files = list(path.glob("*.png"))
-                n = len(all_files)
-                if split == "training":
-                    count = int(0.7 * n)
-                elif split == "validation":
-                    count = int(0.15 * n)
-                else:  # testing
-                    count = n - int(0.7 * n) - int(0.15 * n)
+            if split == "validation":
+                # Validation has flat structure
+                path = DATA_DIR / "validation"
+                if path.exists():
+                    all_files = [f for f in path.glob("*.png") if gesture in f.name]
+                    count = len(all_files)
+                else:
+                    count = 0
             else:
-                count = 0
+                path = DATA_DIR / split / gesture
+                if path.exists():
+                    all_files = list(path.glob("*.png"))
+                    count = len(all_files)
+                else:
+                    count = 0
 
             counts[gesture] = count
             split_total += count
@@ -88,7 +90,7 @@ def analyze_image_properties():
     # Training and testing sets
     for split in ["training", "testing"]:
         for gesture in ["rock", "paper", "scissors"]:
-            path = DATA_DIR / gesture
+            path = DATA_DIR / split / gesture
             if path.exists():
                 all_files = list(path.glob("*.png"))
                 random.seed(42)
@@ -99,23 +101,27 @@ def analyze_image_properties():
                 else:
                     files = all_files[int(0.7 * n) + int(0.15 * n):]
                 for img_path in files[:50]:  # Sample 50 images per gesture per split
-                    img = Image.open(img_path)
-                    widths.append(img.width)
-                    heights.append(img.height)
+                    try:
+                        img = Image.open(img_path)
+                        widths.append(img.width)
+                        heights.append(img.height)
+                    except Exception as e:
+                        print(f"Warning: Could not load {img_path}: {e}")
 
     # Validation set
     for gesture in ["rock", "paper", "scissors"]:
-        path = DATA_DIR / gesture
+        path = DATA_DIR / "validation"
         if path.exists():
-            all_files = list(path.glob("*.png"))
+            all_files = [f for f in path.glob("*.png") if gesture in f.name]
             random.seed(42)
             random.shuffle(all_files)
-            n = len(all_files)
-            val_files = all_files[int(0.7 * n):int(0.85 * n)]
-            for img_path in val_files[:17]:  # Sample ~50 total
-                img = Image.open(img_path)
-                widths.append(img.width)
-                heights.append(img.height)
+            for img_path in all_files[:17]:  # Sample ~50 total
+                try:
+                    img = Image.open(img_path)
+                    widths.append(img.width)
+                    heights.append(img.height)
+                except Exception as e:
+                    print(f"Warning: Could not load {img_path}: {e}")
     
     if widths:
         aspect_ratios = [w/h for w, h in zip(widths, heights)]
@@ -123,40 +129,45 @@ def analyze_image_properties():
         print(f"\nImage Dimensions (from {len(widths)} samples):")
         print(f"  Width  - Min: {min(widths)}, Max: {max(widths)}, Avg: {np.mean(widths):.1f}")
         print(f"  Height - Min: {min(heights)}, Max: {max(heights)}, Avg: {np.mean(heights):.1f}")
-        print(f"\nAspect Ratios:")
+        print("\nAspect Ratios:")
         print(f"  Min: {min(aspect_ratios):.2f}, Max: {max(aspect_ratios):.2f}, Avg: {np.mean(aspect_ratios):.2f}")
     
-    print(f"\nRecommended target size: (224, 224)")
+    print("\nRecommended target size: (224, 224)")
     
     return (224, 224)
 
 def load_images_and_labels(split="training"):
     images, labels = [], []
 
-    for gesture, label in LABEL_MAP.items():
-        path = DATA_DIR / gesture
+    if split == "validation":
+        # Validation has flat structure with all images at root
+        path = DATA_DIR / "validation"
         if path.exists():
-            all_files = list(path.glob("*.png"))
-            random.seed(42)  # For reproducible splits
-            random.shuffle(all_files)
-            n = len(all_files)
-            train_end = int(0.7 * n)
-            val_end = int(0.85 * n)
-            if split == "training":
-                files = all_files[:train_end]
-            elif split == "validation":
-                files = all_files[train_end:val_end]
-            elif split == "testing":
-                files = all_files[val_end:]
-            else:
-                files = all_files  # for all
-            for img_path in files:
-                try:
-                    img = Image.open(img_path)
-                    images.append(np.array(img))
-                    labels.append(label)
-                except Exception as e:
-                    print(f"Warning: Could not load {img_path}: {e}")
+            for gesture, label in LABEL_MAP.items():
+                all_files = [f for f in path.glob("*.png") if gesture in f.name]
+                for img_path in all_files:
+                    try:
+                        img = Image.open(img_path)
+                        images.append(np.array(img))
+                        labels.append(label)
+                    except Exception as e:
+                        print(f"Warning: Could not load {img_path}: {e}")
+    else:
+        # Training and testing have subdirectories
+        for gesture, label in LABEL_MAP.items():
+            path = DATA_DIR / split / gesture
+            if path.exists():
+                all_files = list(path.glob("*.png"))
+                random.seed(42)  # For reproducible splits
+                random.shuffle(all_files)
+                files = all_files
+                for img_path in files:
+                    try:
+                        img = Image.open(img_path)
+                        images.append(np.array(img))
+                        labels.append(label)
+                    except Exception as e:
+                        print(f"Warning: Could not load {img_path}: {e}")
 
     return images, np.array(labels)
 
@@ -170,7 +181,7 @@ def visualize_sample_images():
 
     for i, gesture in enumerate(gestures):
         # Get images from training set
-        path = DATA_DIR / gesture
+        path = DATA_DIR / "training" / gesture
         if path.exists():
             all_files = list(path.glob("*.png"))
             random.seed(42)

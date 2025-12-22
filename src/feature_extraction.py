@@ -1,16 +1,14 @@
-from pathlib import Path
 import numpy as np
-from PIL import Image
 from skimage.feature import hog
 from skimage.filters import sobel
 from skimage.transform import resize
 import pickle
 import os
 try:
-    from keras.applications import VGG16, ResNet50, MobileNetV2
-    from keras.applications.vgg16 import preprocess_input as vgg_preprocess
-    from keras.applications.resnet50 import preprocess_input as resnet_preprocess
-    from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
+    from tensorflow.keras.applications import VGG16, ResNet50, MobileNetV2
+    from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_preprocess
+    from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess
+    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
     TENSORFLOW_AVAILABLE = True
 except ImportError:
     TENSORFLOW_AVAILABLE = False

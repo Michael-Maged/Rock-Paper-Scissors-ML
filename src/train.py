@@ -20,45 +20,52 @@ warnings.filterwarnings('ignore')
 def get_classifiers():
     classifiers = {
         'Decision Tree': DecisionTreeClassifier(
-            max_depth=20,
-            min_samples_split=5,
-            min_samples_leaf=2,
+            max_depth=10,  # Reduced from 20 to prevent overfitting
+            min_samples_split=10,  # Increased from 5
+            min_samples_leaf=5,  # Increased from 2
             random_state=42
         ),
         'Random Forest': RandomForestClassifier(
-            n_estimators=100,
-            max_depth=20,
-            min_samples_split=5,
+            n_estimators=150,  # Increased for better generalization
+            max_depth=12,  # Reduced from 20 to prevent overfitting
+            min_samples_split=10,  # Increased from 5
+            min_samples_leaf=4,  # Increased from default
             random_state=42,
             n_jobs=-1
         ),
         'XGBoost': xgb.XGBClassifier(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=150,  # Increased from 100
+            max_depth=4,  # Reduced from 6 for regularization
+            learning_rate=0.05,  # Reduced from 0.1 for better generalization
+            subsample=0.8,  # Add subsampling for regularization
+            colsample_bytree=0.8,  # Add feature subsampling
+            reg_lambda=1.0,  # Add L2 regularization
+            reg_alpha=0.5,  # Add L1 regularization
             random_state=42,
             eval_metric='mlogloss'
         ),
         'KNN': KNeighborsClassifier(
-            n_neighbors=5,
+            n_neighbors=7,  # Increased from 5 for better generalization
             weights='distance',
             n_jobs=-1
         ),
         'SVM': SVC(
             kernel='rbf',
-            C=1.0,
-            gamma='scale',
+            C=0.5,  # Reduced from 1.0 for less overfitting
+            gamma=0.01,  # Changed from 'scale' for better control
             random_state=42,
             probability=True
         ),
         'ANN': MLPClassifier(
-            hidden_layer_sizes=(256, 128, 64),
+            hidden_layer_sizes=(128, 64, 32),  # Reduced network size
             activation='relu',
             solver='adam',
-            max_iter=100,
+            max_iter=200,  # Increased from 100 for better convergence
             random_state=42,
             early_stopping=True,
-            validation_fraction=0.1
+            validation_fraction=0.15,
+            alpha=0.001,  # Add L2 regularization
+            learning_rate_init=0.001  # Reduced from default
         )
     }
     return classifiers
@@ -236,7 +243,7 @@ def train_and_evaluate(X_train, y_train, X_val, y_val, X_test, y_test, scaler, p
         plot_confusion_matrix(cm, class_names, name)
         
         # Print classification report
-        print(f"\nClassification Report:")
+        print("\nClassification Report:")
         print(classification_report(y_test, y_test_pred, target_names=class_names))
     
     # Save results

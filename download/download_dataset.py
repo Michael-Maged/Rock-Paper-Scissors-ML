@@ -403,6 +403,20 @@ def organize_drgfreeman_dataset(temp_dir):
         for img in test_images:
             shutil.copy2(img, test_path / img.name)
 
+def clear_data_folders():
+    """Clear existing data folders before download"""
+    print("Clearing existing data folders...")
+    
+    folders_to_clear = ["training", "validation", "testing"]
+    
+    for folder in folders_to_clear:
+        folder_path = DATA_DIR / folder
+        if folder_path.exists():
+            shutil.rmtree(folder_path)
+            print(f"  Cleared: {folder}")
+    
+    print("✓ Data folders cleared")
+
 def cleanup(temp_dir):
     """Remove temporary download directory"""
     if temp_dir and temp_dir.exists():
@@ -467,9 +481,6 @@ def display_menu():
     print("\n3. DrGFreeman Dataset")
     print("   - Rock Paper Scissors images dataset")
     print("   - Size: ~200MB")
-    print("\n4. All Datasets")
-    print("   - Downloads and combines all three datasets")
-    print("   - Total size: ~560MB")
     print("\n" + "="*60)
 
 def get_user_choice():
@@ -478,11 +489,11 @@ def get_user_choice():
     
     while True:
         try:
-            choice = input("\nEnter your choice (1-4): ").strip()
-            if choice in ["1", "2", "3", "4"]:
+            choice = input("\nEnter your choice (1-3): ").strip()
+            if choice in ["1", "2", "3"]:
                 return choice
             else:
-                print("Invalid choice. Please enter 1, 2, 3, or 4.")
+                print("Invalid choice. Please enter 1, 2, or 3.")
         except KeyboardInterrupt:
             print("\n\nSetup cancelled by user.")
             exit(0)
@@ -492,9 +503,9 @@ def main():
     parser.add_argument(
         "--dataset",
         "-d",
-        choices=["1", "2", "3", "4"],
+        choices=["1", "2", "3"],
         default=None,
-        help="Which dataset to download: 1=sanikamal, 2=glushko, 3=drgfreeman, 4=all (interactive if not specified)"
+        help="Which dataset to download: 1=sanikamal, 2=glushko, 3=drgfreeman (interactive if not specified)"
     )
     parser.add_argument(
         "--skip-download",
@@ -511,13 +522,8 @@ def main():
         dataset_choice = get_user_choice()
     
     # Map choice to datasets
-    datasets_to_process = []
-    
-    if dataset_choice == "4":
-        datasets_to_process = ["sanikamal", "glushko", "drgfreeman"]
-    else:
-        dataset_map = {"1": "sanikamal", "2": "glushko", "3": "drgfreeman"}
-        datasets_to_process = [dataset_map[dataset_choice]]
+    dataset_map = {"1": "sanikamal", "2": "glushko", "3": "drgfreeman"}
+    dataset_name = dataset_map[dataset_choice]
     
     print("\n" + "="*60)
     print("ROCK PAPER SCISSORS DATASET SETUP")
@@ -527,41 +533,41 @@ def main():
     if not args.skip_download and not check_kaggle_setup():
         return
     
-    # Create data directory
+    # Create data directory and clear existing folders
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    clear_data_folders()
     
-    # Process each dataset
-    for dataset_name in datasets_to_process:
-        print(f"\n{'='*60}")
-        print(f"Processing: {dataset_name}")
-        print(f"{'='*60}")
+    # Process dataset
+    print(f"\n{'='*60}")
+    print(f"Processing: {dataset_name}")
+    print(f"{'='*60}")
+    
+    # Download dataset
+    if args.skip_download:
+        temp_dir = PROJECT_ROOT / "temp_download"
+        if not temp_dir.exists():
+            print("Error: temp_download directory not found")
+            return
+    else:
+        temp_dir = download_dataset(dataset_name)
+        if not temp_dir:
+            return
+    
+    # Organize dataset based on type
+    try:
+        if dataset_name == "sanikamal":
+            organize_sanikamal_dataset(temp_dir)
+        elif dataset_name == "glushko":
+            organize_glushko_dataset(temp_dir)
+        else:  # drgfreeman
+            organize_drgfreeman_dataset(temp_dir)
         
-        # Download dataset
-        if args.skip_download:
-            temp_dir = PROJECT_ROOT / "temp_download"
-            if not temp_dir.exists():
-                print("Error: temp_download directory not found")
-                continue
-        else:
-            temp_dir = download_dataset(dataset_name)
-            if not temp_dir:
-                continue
+        print(f"✓ {dataset_name} organized successfully!")
         
-        # Organize dataset based on type
-        try:
-            if dataset_name == "sanikamal":
-                organize_sanikamal_dataset(temp_dir)
-            elif dataset_name == "glushko":
-                organize_glushko_dataset(temp_dir)
-            else:  # drgfreeman
-                organize_drgfreeman_dataset(temp_dir)
-            
-            print(f"✓ {dataset_name} organized successfully!")
-            
-        finally:
-            # Cleanup
-            if not args.skip_download:
-                cleanup(temp_dir)
+    finally:
+        # Cleanup
+        if not args.skip_download:
+            cleanup(temp_dir)
     
     # Verify final structure
     if verify_structure():

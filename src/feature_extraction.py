@@ -1,7 +1,6 @@
-import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow info messages
-
+from pathlib import Path
 import numpy as np
+from PIL import Image
 from skimage.feature import hog
 from skimage.filters import sobel
 from skimage.transform import resize
@@ -14,8 +13,6 @@ try:
     from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
     TENSORFLOW_AVAILABLE = True
 except ImportError:
-    VGG16 = ResNet50 = MobileNetV2 = None
-    vgg_preprocess = resnet_preprocess = mobilenet_preprocess = None
     TENSORFLOW_AVAILABLE = False
 
 from explore_data import load_images_and_labels

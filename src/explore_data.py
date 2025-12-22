@@ -2,6 +2,9 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+import random
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 LABEL_MAP = {"rock": 0, "paper": 1, "scissors": 2}
@@ -10,46 +13,44 @@ def explore_data():
     print("="*70)
     print("DATASET EXPLORATION")
     print("="*70)
-    
+
     splits = ["training", "validation", "testing"]
     gestures = ["rock", "paper", "scissors"]
-    
+
     all_counts = {}
-    
+
     for split in splits:
         print(f"\n{split.upper()}:")
         split_total = 0
         counts = {}
-        
+
         for gesture in gestures:
-            if split == "validation":
-                # Validation has files named like "rock01.png" in a single folder
-                path = DATA_DIR / split
-                if path.exists():
-                    count = len(list(path.glob(f"{gesture}*.png")))
-                else:
-                    count = 0
+            path = DATA_DIR / gesture
+            if path.exists():
+                all_files = list(path.glob("*.png"))
+                n = len(all_files)
+                if split == "training":
+                    count = int(0.7 * n)
+                elif split == "validation":
+                    count = int(0.15 * n)
+                else:  # testing
+                    count = n - int(0.7 * n) - int(0.15 * n)
             else:
-                # Training and testing have subfolders
-                path = DATA_DIR / split / gesture
-                if path.exists():
-                    count = len(list(path.glob("*.png")))
-                else:
-                    count = 0
-            
+                count = 0
+
             counts[gesture] = count
             split_total += count
-        
+
         for gesture in gestures:
             pct = (counts[gesture] / split_total * 100) if split_total > 0 else 0
             print(f"  {gesture}: {counts[gesture]:>4} ({pct:.1f}%)")
         print(f"  Total: {split_total:>4}")
-        
+
         all_counts[split] = counts
-    
+
     # Visualize class distribution
     visualize_class_distribution(all_counts)
-    
+
     return all_counts
 
 def visualize_class_distribution(all_counts):
@@ -72,6 +73,7 @@ def visualize_class_distribution(all_counts):
             axes[idx].text(i, count + 10, str(count), ha='center', fontweight='bold')
     
     plt.tight_layout()
+    os.makedirs('results/plots', exist_ok=True)
     plt.savefig('results/plots/class_distribution.png', dpi=300, bbox_inches='tight')
     print("\nClass distribution plot saved: results/plots/class_distribution.png")
     plt.close()
@@ -80,84 +82,114 @@ def analyze_image_properties():
     print("\n" + "="*70)
     print("IMAGE PROPERTIES ANALYSIS")
     print("="*70)
-    
+
     widths, heights = [], []
-    
+
     # Training and testing sets
     for split in ["training", "testing"]:
         for gesture in ["rock", "paper", "scissors"]:
-            path = DATA_DIR / split / gesture
+            path = DATA_DIR / gesture
             if path.exists():
-                for img_path in path.glob("*.png"):
+                all_files = list(path.glob("*.png"))
+                random.seed(42)
+                random.shuffle(all_files)
+                n = len(all_files)
+                if split == "training":
+                    files = all_files[:int(0.7 * n)]
+                else:
+                    files = all_files[int(0.7 * n) + int(0.15 * n):]
+                for img_path in files[:50]:  # Sample 50 images per gesture per split
                     img = Image.open(img_path)
                     widths.append(img.width)
                     heights.append(img.height)
+
+    # Validation set
+    for gesture in ["rock", "paper", "scissors"]:
+        path = DATA_DIR / gesture
+        if path.exists():
+            all_files = list(path.glob("*.png"))
+            random.seed(42)
+            random.shuffle(all_files)
+            n = len(all_files)
+            val_files = all_files[int(0.7 * n):int(0.85 * n)]
+            for img_path in val_files[:17]:  # Sample ~50 total
+                img = Image.open(img_path)
+                widths.append(img.width)
+                heights.append(img.height)
     
-    # Validation set (different structure)
-    val_path = DATA_DIR / "validation"
-    if val_path.exists():
-        for img_path in val_path.glob("*.png"):
-            img = Image.open(img_path)
-            widths.append(img.width)
-            heights.append(img.height)
+    if widths:
+        aspect_ratios = [w/h for w, h in zip(widths, heights)]
+        
+        print(f"\nImage Dimensions (from {len(widths)} samples):")
+        print(f"  Width  - Min: {min(widths)}, Max: {max(widths)}, Avg: {np.mean(widths):.1f}")
+        print(f"  Height - Min: {min(heights)}, Max: {max(heights)}, Avg: {np.mean(heights):.1f}")
+        print(f"\nAspect Ratios:")
+        print(f"  Min: {min(aspect_ratios):.2f}, Max: {max(aspect_ratios):.2f}, Avg: {np.mean(aspect_ratios):.2f}")
     
-    aspect_ratios = [w/h for w, h in zip(widths, heights)]
-    
-    print("\nImage Dimensions:")
-    print(f"  Width  - Min: {min(widths)}, Max: {max(widths)}, Avg: {np.mean(widths):.1f}")
-    print(f"  Height - Min: {min(heights)}, Max: {max(heights)}, Avg: {np.mean(heights):.1f}")
-    print("\nAspect Ratios:")
-    print(f"  Min: {min(aspect_ratios):.2f}, Max: {max(aspect_ratios):.2f}, Avg: {np.mean(aspect_ratios):.2f}")
-    print("\nRecommended target size: (224, 224)")
+    print(f"\nRecommended target size: (224, 224)")
     
     return (224, 224)
 
 def load_images_and_labels(split="training"):
     images, labels = [], []
-    
-    if split == "validation":
-        # Validation has files named like "rock01.png" in a single folder
-        for gesture, label in LABEL_MAP.items():
-            path = DATA_DIR / split
-            if path.exists():
-                for img_path in sorted(path.glob(f"{gesture}*.png")):
+
+    for gesture, label in LABEL_MAP.items():
+        path = DATA_DIR / gesture
+        if path.exists():
+            all_files = list(path.glob("*.png"))
+            random.seed(42)  # For reproducible splits
+            random.shuffle(all_files)
+            n = len(all_files)
+            train_end = int(0.7 * n)
+            val_end = int(0.85 * n)
+            if split == "training":
+                files = all_files[:train_end]
+            elif split == "validation":
+                files = all_files[train_end:val_end]
+            elif split == "testing":
+                files = all_files[val_end:]
+            else:
+                files = all_files  # for all
+            for img_path in files:
+                try:
                     img = Image.open(img_path)
                     images.append(np.array(img))
                     labels.append(label)
-    else:
-        # Training and testing have subfolders
-        for gesture, label in LABEL_MAP.items():
-            path = DATA_DIR / split / gesture
-            if path.exists():
-                for img_path in sorted(path.glob("*.png")):
-                    img = Image.open(img_path)
-                    images.append(np.array(img))
-                    labels.append(label)
-    
-    return images, labels
+                except Exception as e:
+                    print(f"Warning: Could not load {img_path}: {e}")
+
+    return images, np.array(labels)
 
 def visualize_sample_images():
     print("\n" + "="*70)
     print("VISUALIZING SAMPLE IMAGES")
     print("="*70)
-    
+
     fig, axes = plt.subplots(3, 6, figsize=(15, 8))
     gestures = ["rock", "paper", "scissors"]
-    
+
     for i, gesture in enumerate(gestures):
         # Get images from training set
-        path = DATA_DIR / "training" / gesture
+        path = DATA_DIR / gesture
         if path.exists():
-            image_files = list(path.glob("*.png"))[:6]
-            
+            all_files = list(path.glob("*.png"))
+            random.seed(42)
+            random.shuffle(all_files)
+            n = len(all_files)
+            train_files = all_files[:int(0.7 * n)]
+            image_files = train_files[:6]
+
             for j, img_path in enumerate(image_files):
-                img = Image.open(img_path)
-                axes[i, j].imshow(img)
-                axes[i, j].axis('off')
-                if j == 0:
-                    axes[i, j].set_title(f'{gesture.upper()}', 
-                                        fontsize=12, fontweight='bold', 
-                                        loc='left')
+                try:
+                    img = Image.open(img_path)
+                    axes[i, j].imshow(img)
+                    axes[i, j].axis('off')
+                    if j == 0:
+                        axes[i, j].set_title(f'{gesture.upper()}',
+                                            fontsize=12, fontweight='bold',
+                                            loc='left')
+                except Exception as e:
+                    print(f"Warning: Could not display {img_path}: {e}")
     
     plt.suptitle('Sample Images from Dataset', fontsize=14, fontweight='bold')
     plt.tight_layout()
@@ -167,7 +199,6 @@ def visualize_sample_images():
 
 if __name__ == "__main__":
     # Create results directory
-    import os
     os.makedirs('results/plots', exist_ok=True)
     
     # Explore dataset

@@ -14,13 +14,19 @@ def resize_image(image, target_size=(100, 100)):
     return np.array(img_resized)
 
 def extract_color_features(image):
-    """Extract color-based features"""
+    """
+    Extract color-based features
+    - Mean, std, min, max for each RGB channel
+    - Color histograms
+    """
     features = []
     
+    # Separate RGB channels
     r_channel = image[:, :, 0]
     g_channel = image[:, :, 1]
     b_channel = image[:, :, 2]
     
+    # Statistical features for each channel
     for channel in [r_channel, g_channel, b_channel]:
         features.append(np.mean(channel))
         features.append(np.std(channel))
@@ -28,22 +34,28 @@ def extract_color_features(image):
         features.append(np.max(channel))
         features.append(np.median(channel))
     
+    # Color histograms (16 bins per channel)
     for channel in [r_channel, g_channel, b_channel]:
         hist, _ = np.histogram(channel.flatten(), bins=16, range=(0, 256))
-        hist = hist / (hist.sum() + 1e-7)
+        hist = hist / (hist.sum() + 1e-7)  # Normalize
         features.extend(hist)
     
     return np.array(features)
 
 def extract_edge_features(image):
-    """Extract edge features"""
+    """
+    Extract simple edge features using gradients
+    """
     features = []
     
+    # Convert to grayscale
     gray = np.mean(image, axis=2)
     
+    # Compute horizontal and vertical gradients (simple difference)
     grad_x = np.abs(np.diff(gray, axis=1))
     grad_y = np.abs(np.diff(gray, axis=0))
     
+    # Edge statistics
     features.append(np.mean(grad_x))
     features.append(np.std(grad_x))
     features.append(np.max(grad_x))
@@ -52,6 +64,7 @@ def extract_edge_features(image):
     features.append(np.std(grad_y))
     features.append(np.max(grad_y))
     
+    # Edge density (pixels with high gradient)
     threshold = 30
     edge_pixels_x = np.sum(grad_x > threshold)
     edge_pixels_y = np.sum(grad_y > threshold)
@@ -61,11 +74,16 @@ def extract_edge_features(image):
     return np.array(features)
 
 def extract_texture_features(image):
-    """Extract texture features"""
+    """
+    Extract simple texture features
+    """
     features = []
     
+    # Convert to grayscale
     gray = np.mean(image, axis=2)
     
+    # Compute local variance (texture measure)
+    # Using 5x5 patches
     h, w = gray.shape
     patch_size = 5
     variances = []
@@ -80,6 +98,7 @@ def extract_texture_features(image):
     features.append(np.max(variances))
     features.append(np.min(variances))
     
+    # Image entropy (measure of randomness)
     hist, _ = np.histogram(gray.flatten(), bins=256, range=(0, 256))
     hist = hist / (hist.sum() + 1e-7)
     entropy = -np.sum(hist * np.log2(hist + 1e-7))
@@ -88,31 +107,51 @@ def extract_texture_features(image):
     return np.array(features)
 
 def extract_shape_features(image):
-    """Extract shape features"""
+    """
+    Improved shape features:
+    - fill ratio
+    - number of connected components
+    - largest component aspect ratio
+    - edge density
+    """
+    from scipy import ndimage
+
     features = []
-    
+
     gray = np.mean(image, axis=2)
-    
+
+    # adaptive threshold
     threshold = np.mean(gray)
     binary = (gray > threshold).astype(np.uint8)
-    
-    features.append(np.sum(binary) / binary.size)
-    
-    y_coords, x_coords = np.where(binary > 0)
-    if len(x_coords) > 0:
-        center_x = np.mean(x_coords) / binary.shape[1]
-        center_y = np.mean(y_coords) / binary.shape[0]
-        features.append(center_x)
-        features.append(center_y)
+
+    # --- 1) fill ratio ---
+    fill_ratio = np.sum(binary) / binary.size
+    features.append(fill_ratio)
+
+    # --- 2) connected components ---
+    labeled, num_components = ndimage.label(binary)
+    features.append(num_components / 10.0)  # normalize
+
+    # --- 3) largest component aspect ratio ---
+    if num_components > 0:
+        sizes = ndimage.sum(binary, labeled, range(1, num_components+1))
+        largest = np.argmax(sizes) + 1
+        coords = np.column_stack(np.where(labeled == largest))
+        y_min, x_min = coords.min(axis=0)
+        y_max, x_max = coords.max(axis=0)
+        h = max(1, y_max - y_min)
+        w = max(1, x_max - x_min)
+        aspect_ratio = w / h
     else:
-        features.extend([0.5, 0.5])
-    
-    if len(x_coords) > 0:
-        features.append(np.std(x_coords) / binary.shape[1])
-        features.append(np.std(y_coords) / binary.shape[0])
-    else:
-        features.extend([0, 0])
-    
+        aspect_ratio = 1.0
+
+    features.append(aspect_ratio)
+
+    # --- 4) edge density (strong separator scissors vs rock) ---
+    grad = np.hypot(np.diff(gray, axis=0, prepend=0), np.diff(gray, axis=1, prepend=0))
+    edge_density = np.sum(grad > 25) / grad.size
+    features.append(edge_density)
+
     return np.array(features)
 
 def extract_all_features(image):

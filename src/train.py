@@ -85,14 +85,16 @@ def get_classifiers():
             max_depth=10,
             min_samples_split=5,
             min_samples_leaf=2,
-            random_state=42
+            random_state=42,
+            class_weight='balanced'
         ),
         'Random Forest': RandomForestClassifier(
             n_estimators=100,
             max_depth=10,
             min_samples_split=5,
             random_state=42,
-            n_jobs=-1
+            n_jobs=-1,
+            class_weight='balanced'
         ),
         'XGBoost': xgb.XGBClassifier(
             n_estimators=100,
@@ -111,7 +113,8 @@ def get_classifiers():
             C=1.0,
             gamma='scale',
             random_state=42,
-            probability=True
+            probability=True,
+            class_weight='balanced'
         ),
         'ANN': MLPClassifier(
             hidden_layer_sizes=(100, 50),
@@ -319,7 +322,7 @@ def main():
     
     # Preprocess features (NOW PASSING y_train)
     X_train_proc, X_test_proc, scaler, selector = preprocess_features(
-        X_train, X_test, y_train, use_feature_selection=True, k_features=50
+        X_train, X_test, y_train, use_feature_selection=True, k_features=80
     )
     
     # Train and evaluate

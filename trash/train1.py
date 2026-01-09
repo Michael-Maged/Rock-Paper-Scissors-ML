@@ -1,0 +1,319 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report)
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import xgboost as xgb
+import pickle
+import time
+import os
+import warnings
+warnings.filterwarnings('ignore')
+
+def get_classifiers():
+    classifiers = {
+        'Decision Tree': DecisionTreeClassifier(
+            max_depth=10,  # Reduced from 20 to prevent overfitting
+            min_samples_split=10,  # Increased from 5
+            min_samples_leaf=5,  # Increased from 2
+            random_state=42
+        ),
+        'Random Forest': RandomForestClassifier(
+            n_estimators=150,  # Increased for better generalization
+            max_depth=12,  # Reduced from 20 to prevent overfitting
+            min_samples_split=10,  # Increased from 5
+            min_samples_leaf=4,  # Increased from default
+            random_state=42,
+            n_jobs=-1
+        ),
+        'XGBoost': xgb.XGBClassifier(
+            n_estimators=150,  # Increased from 100
+            max_depth=4,  # Reduced from 6 for regularization
+            learning_rate=0.05,  # Reduced from 0.1 for better generalization
+            subsample=0.8,  # Add subsampling for regularization
+            colsample_bytree=0.8,  # Add feature subsampling
+            reg_lambda=1.0,  # Add L2 regularization
+            reg_alpha=0.5,  # Add L1 regularization
+            random_state=42,
+            eval_metric='mlogloss'
+        ),
+        'KNN': KNeighborsClassifier(
+            n_neighbors=7,  # Increased from 5 for better generalization
+            weights='distance',
+            n_jobs=-1
+        ),
+        'SVM': SVC(
+            kernel='rbf',
+            C=0.5,  # Reduced from 1.0 for less overfitting
+            gamma=0.01,  # Changed from 'scale' for better control
+            random_state=42,
+            probability=True
+        ),
+        'ANN': MLPClassifier(
+            hidden_layer_sizes=(128, 64, 32),  # Reduced network size
+            activation='relu',
+            solver='adam',
+            max_iter=200,  # Increased from 100 for better convergence
+            random_state=42,
+            early_stopping=True,
+            validation_fraction=0.15,
+            alpha=0.001,  # Add L2 regularization
+            learning_rate_init=0.001  # Reduced from default
+        )
+    }
+    return classifiers
+
+def load_features(feature_type='handcrafted'):
+    print("="*70)
+    print(f"LOADING {feature_type.upper()} FEATURES")
+    print("="*70)
+    
+    with open(f'data/features/training_{feature_type}.pkl', 'rb') as f:
+        train_data = pickle.load(f)
+    X_train = train_data['features']
+    y_train = train_data['labels']
+    
+    with open(f'data/features/validation_{feature_type}.pkl', 'rb') as f:
+        val_data = pickle.load(f)
+    X_val = val_data['features']
+    y_val = val_data['labels']
+    
+    with open(f'data/features/testing_{feature_type}.pkl', 'rb') as f:
+        test_data = pickle.load(f)
+    X_test = test_data['features']
+    y_test = test_data['labels']
+    
+    print(f"Training samples: {len(X_train)}")
+    print(f"Validation samples: {len(X_val)}")
+    print(f"Testing samples: {len(X_test)}")
+    print(f"Feature dimensions: {X_train.shape[1]}")
+    
+    return X_train, y_train, X_val, y_val, X_test, y_test
+
+def preprocess_features(X_train, X_val, X_test, use_pca=True, n_components=None):
+    print("\n" + "="*70)
+    print("FEATURE PREPROCESSING")
+    print("="*70)
+    
+    print("Applying StandardScaler...")
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)
+    X_test_scaled = scaler.transform(X_test)
+    
+    if use_pca:
+        print("Applying PCA for dimensionality reduction...")
+        if n_components is None:
+            n_components = min(300, X_train_scaled.shape[1])
+        
+        pca = PCA(n_components=n_components)
+        X_train_pca = pca.fit_transform(X_train_scaled)
+        X_val_pca = pca.transform(X_val_scaled)
+        X_test_pca = pca.transform(X_test_scaled)
+        
+        explained_var = pca.explained_variance_ratio_.sum()
+        print(f"Reduced from {X_train_scaled.shape[1]} to {n_components} features")
+        print(f"Explained variance: {explained_var:.2%}")
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(np.cumsum(pca.explained_variance_ratio_), linewidth=2, color='#2E86AB')
+        plt.xlabel('Number of Components', fontsize=12, fontweight='bold')
+        plt.ylabel('Cumulative Explained Variance', fontsize=12, fontweight='bold')
+        plt.title('PCA - Explained Variance', fontsize=14, fontweight='bold')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        os.makedirs('results/plots', exist_ok=True)
+        plt.savefig('results/plots/pca_variance.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        print("PCA plot saved: results/plots/pca_variance.png")
+        
+        return X_train_pca, X_val_pca, X_test_pca, scaler, pca
+    else:
+        return X_train_scaled, X_val_scaled, X_test_scaled, scaler, None
+
+def plot_confusion_matrix(cm, class_names, classifier_name):
+    """Plot and save confusion matrix"""
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=class_names, yticklabels=class_names,
+                cbar_kws={'label': 'Count'})
+    plt.xlabel('Predicted Label', fontsize=12, fontweight='bold')
+    plt.ylabel('True Label', fontsize=12, fontweight='bold')
+    plt.title(f'Confusion Matrix - {classifier_name}', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    os.makedirs('results/confusion_matrices', exist_ok=True)
+    filename = f'results/confusion_matrices/cm_{classifier_name.lower().replace(" ", "_")}.png'
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()
+
+def save_best_model(results_df, trained_models, scaler, pca, feature_type):
+    """Save the best performing model"""
+    best_model_name = results_df.iloc[0]['Classifier']
+    best_model = trained_models[best_model_name]
+    best_accuracy = results_df.iloc[0]['Test Accuracy (%)']
+    
+    print(f"\n{'='*70}")
+    print(f"BEST MODEL: {best_model_name}")
+    print(f"Test Accuracy: {best_accuracy:.2f}%")
+    print('='*70)
+    
+    os.makedirs('models', exist_ok=True)
+    model_data = {
+        'model': best_model,
+        'scaler': scaler,
+        'pca': pca,
+        'class_names': ['rock', 'paper', 'scissors'],
+        'feature_type': feature_type
+    }
+    
+    filename = f'models/best_model_{feature_type}.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(model_data, f)
+    
+    print(f"\nBest model saved to: {filename}")
+
+def train_and_evaluate(X_train, y_train, X_val, y_val, X_test, y_test, scaler, pca, feature_type):
+    class_names = ['rock', 'paper', 'scissors']
+    classifiers = get_classifiers()
+    
+    print("\n" + "="*70)
+    print("TRAINING AND EVALUATION")
+    print("="*70)
+    
+    results = []
+    trained_models = {}
+    
+    for name, clf in classifiers.items():
+        print(f"\n{'='*70}")
+        print(f"Training: {name}")
+        print('='*70)
+        
+        # Train
+        start_time = time.time()
+        clf.fit(X_train, y_train)
+        training_time = time.time() - start_time
+        
+        # Predict
+        y_train_pred = clf.predict(X_train)
+        y_val_pred = clf.predict(X_val)
+        y_test_pred = clf.predict(X_test)
+        
+        # Calculate metrics
+        train_accuracy = accuracy_score(y_train, y_train_pred)
+        val_accuracy = accuracy_score(y_val, y_val_pred)
+        test_accuracy = accuracy_score(y_test, y_test_pred)
+        test_precision = precision_score(y_test, y_test_pred, average='weighted')
+        test_recall = recall_score(y_test, y_test_pred, average='weighted')
+        test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+        
+        # Store results
+        results.append({
+            'Classifier': name,
+            'Training Time (s)': round(training_time, 2),
+            'Train Accuracy (%)': round(train_accuracy * 100, 2),
+            'Validation Accuracy (%)': round(val_accuracy * 100, 2),
+            'Test Accuracy (%)': round(test_accuracy * 100, 2),
+            'Precision': round(test_precision, 4),
+            'Recall': round(test_recall, 4),
+            'F1-Score': round(test_f1, 4)
+        })
+        
+        # Store trained model
+        trained_models[name] = clf
+        
+        # Print metrics
+        print(f"Training Time: {training_time:.2f}s")
+        print(f"Train Accuracy: {train_accuracy*100:.2f}%")
+        print(f"Validation Accuracy: {val_accuracy*100:.2f}%")
+        print(f"Test Accuracy: {test_accuracy*100:.2f}%")
+        print(f"Precision: {test_precision:.4f}")
+        print(f"Recall: {test_recall:.4f}")
+        print(f"F1-Score: {test_f1:.4f}")
+        
+        # Generate confusion matrix
+        cm = confusion_matrix(y_test, y_test_pred)
+        plot_confusion_matrix(cm, class_names, name)
+        
+        # Print classification report
+        print("\nClassification Report:")
+        print(classification_report(y_test, y_test_pred, target_names=class_names))
+    
+    # Save results
+    results_df = pd.DataFrame(results)
+    results_df = results_df.sort_values('Test Accuracy (%)', ascending=False)
+    
+    print("\n" + "="*70)
+    print("RESULTS SUMMARY")
+    print("="*70)
+    print("\n" + results_df.to_string(index=False))
+    
+    # Save to CSV
+    os.makedirs('results/metrics', exist_ok=True)
+    results_df.to_csv(f'results/metrics/results_{feature_type}.csv', index=False)
+    print(f"\nResults saved to: results/metrics/results_{feature_type}.csv")
+    
+    # Save best model
+    save_best_model(results_df, trained_models, scaler, pca, feature_type)
+    
+    return results_df, trained_models
+
+if __name__ == "__main__":
+    print("="*70)
+    print("ROCK-PAPER-SCISSORS CLASSIFICATION")
+    print("="*70)
+    
+    # Check which features are available
+    feature_dir = 'data/features'
+    available_features = []
+    
+    if os.path.exists(f'{feature_dir}/training_handcrafted.pkl'):
+        available_features.append('handcrafted')
+    if os.path.exists(f'{feature_dir}/training_deep_mobilenet.pkl'):
+        available_features.append('deep_mobilenet')
+    
+    if not available_features:
+        print("\nError: No feature files found!")
+        print("Please run feature extraction script first.")
+        exit()
+    
+    print("\nAvailable features:")
+    for i, feat in enumerate(available_features, 1):
+        print(f"{i}. {feat}")
+    
+    # Select feature type
+    if len(available_features) == 1:
+        feature_type = available_features[0]
+        print(f"\nUsing {feature_type} features")
+    else:
+        choice = input("\nSelect feature type (1/2): ").strip()
+        feature_type = available_features[int(choice)-1]
+    
+    # Load features
+    X_train, y_train, X_val, y_val, X_test, y_test = load_features(feature_type)
+    
+    # Preprocess features
+    X_train_proc, X_val_proc, X_test_proc, scaler, pca = preprocess_features(
+        X_train, X_val, X_test, use_pca=True
+    )
+    
+    # Train and evaluate
+    results_df, trained_models = train_and_evaluate(
+        X_train_proc, y_train, X_val_proc, y_val, X_test_proc, y_test,
+        scaler, pca, feature_type
+    )
+    
+    print("\n" + "="*70)
+    print("TRAINING AND CLASSIFICATION COMPLETED!")
+    print("="*70)
+    print("\nGenerated files:")
+    print("- Confusion matrices: results/confusion_matrices/")
+    print("- Results: results/metrics/")
+    print("- Best model: models/")

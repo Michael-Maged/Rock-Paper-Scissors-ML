@@ -313,6 +313,69 @@ def extract_geometric_features(image):
     
     return np.array(features)  # Total: 18 features
 
+def extract_finger_counting_features(image):
+    """Better finger detection"""
+    mask = segment_hand(image)
+    contour = get_hand_contour(mask)
+    
+    if contour is None or len(contour) < 10:
+        return [0, 0, 0, 0, 0]
+    
+    # Find convex hull
+    hull = cv2.convexHull(contour, returnPoints=False)
+    
+    if len(hull) < 4:
+        return [0, 0, 0, 0, 0]
+    
+    # Get defects
+    defects = cv2.convexityDefects(contour, hull)
+    
+    if defects is None:
+        return [0, 0, 0, 0, 0]
+    
+    # Count significant defects (valleys between fingers)
+    significant_defects = 0
+    max_depth = 0
+    avg_depth = 0
+    depths = []
+    
+    for i in range(defects.shape[0]):
+        s, e, f, d = defects[i, 0]
+        depth = d / 256.0
+        
+        # Get the points
+        start = tuple(contour[s][0])
+        end = tuple(contour[e][0])
+        far = tuple(contour[f][0])
+        
+        # Calculate angle at the defect point
+        a = np.linalg.norm(np.array(start) - np.array(far))
+        b = np.linalg.norm(np.array(end) - np.array(far))
+        c = np.linalg.norm(np.array(start) - np.array(end))
+        
+        angle = np.arccos((a**2 + b**2 - c**2) / (2 * a * b + 1e-5))
+        angle_deg = np.degrees(angle)
+        
+        # Count only defects with reasonable depth and angle
+        if depth > 15 and angle_deg < 90:  # Deep valley with acute angle
+            significant_defects += 1
+            depths.append(depth)
+            max_depth = max(max_depth, depth)
+    
+    if depths:
+        avg_depth = np.mean(depths)
+    
+    # Estimate finger count (defects + 1)
+    estimated_fingers = min(significant_defects + 1, 5)
+    
+    return [
+        estimated_fingers,
+        significant_defects,
+        max_depth,
+        avg_depth,
+        len(depths)
+    ]
+
 def extract_all_features(image):
     """
     Extract all features from an image
@@ -325,9 +388,10 @@ def extract_all_features(image):
     edge_feat = extract_edge_features(image_resized)
     texture_feat = extract_texture_features(image_resized)
     geometric_feat = extract_geometric_features(image_resized)
+    finger_features = extract_finger_counting_features(image_resized)
     
     # Combine all features
-    all_features = np.concatenate([geometric_feat])
+    all_features = np.concatenate([geometric_feat, finger_features])
     
     return all_features
 

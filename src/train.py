@@ -322,7 +322,7 @@ def main():
     
     # Preprocess features (NOW PASSING y_train)
     X_train_proc, X_test_proc, scaler, selector = preprocess_features(
-        X_train, X_test, y_train, use_feature_selection=True, k_features=18
+        X_train, X_test, y_train, use_feature_selection=True, k_features=80
     )
     
     # Train and evaluate

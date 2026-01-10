@@ -287,6 +287,37 @@ def count_fingers(contour):
     
     return min(finger_count, 5)  # Max 5 fingers
 
+def extract_fist_detection_features(image):
+    """Specific features to detect closed fist (rock)"""
+    mask = segment_hand(image)
+    
+    if mask is None:
+        return [0, 0, 0]
+    
+    # 1. Compactness (rock should be very compact)
+    contour = get_hand_contour(mask)
+    if contour is None:
+        return [0, 0, 0]
+    
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    
+    if perimeter == 0:
+        return [0, 0, 0]
+    
+    # Circularity (rock is more circular)
+    circularity = (4 * np.pi * area) / (perimeter ** 2)
+    
+    # 2. Aspect ratio of bounding box
+    x, y, w, h = cv2.boundingRect(contour)
+    aspect_ratio = w / max(h, 1)
+    
+    # 3. Extent (how much of bounding box is filled)
+    rect_area = w * h
+    extent = area / max(rect_area, 1)
+    
+    return [circularity, aspect_ratio, extent]
+
 def extract_geometric_features(image):
     """Extract all geometric features from hand segmentation"""
     features = []
@@ -302,6 +333,7 @@ def extract_geometric_features(image):
     distance_features = extract_centroid_distance_profile(contour)
     hu_features = extract_hu_moments(contour)
     finger_count = count_fingers(contour)
+    fist_features = extract_fist_detection_features(image)
     
     # Combine all geometric features
     features.extend(convex_features)  # 3 features
@@ -310,6 +342,7 @@ def extract_geometric_features(image):
     features.extend(distance_features) # 3 features
     features.extend(hu_features)      # 7 features
     features.append(finger_count)     # 1 feature
+    features.extend(fist_features)    # 3 features
     
     return np.array(features)  # Total: 18 features
 

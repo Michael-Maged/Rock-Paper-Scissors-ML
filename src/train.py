@@ -79,50 +79,52 @@ def preprocess_features(X_train, X_test, y_train, use_feature_selection=True, k_
         return X_train_scaled, X_test_scaled, scaler, None
 
 def get_classifiers():
-    """Define all classifiers"""
+    """Simplified classifiers focused on small dataset"""
     classifiers = {
         'Decision Tree': DecisionTreeClassifier(
-            max_depth=10,
-            min_samples_split=5,
-            min_samples_leaf=2,
+            max_depth=5,  # Shallower to avoid overfitting
+            min_samples_split=10,
+            min_samples_leaf=5,
             random_state=42,
             class_weight='balanced'
         ),
         'Random Forest': RandomForestClassifier(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=5,
+            n_estimators=50,  # Fewer trees
+            max_depth=5,
+            min_samples_split=10,
+            min_samples_leaf=5,
             random_state=42,
             n_jobs=-1,
             class_weight='balanced'
         ),
         'XGBoost': xgb.XGBClassifier(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=50,
+            max_depth=3,  # Very shallow
+            learning_rate=0.3,
             random_state=42,
             eval_metric='mlogloss'
         ),
         'KNN': KNeighborsClassifier(
-            n_neighbors=5,
+            n_neighbors=7,  # More neighbors for stability
             weights='distance',
             n_jobs=-1
         ),
         'SVM': SVC(
             kernel='rbf',
-            C=1.0,
+            C=0.1,  # Lower C to prevent overfitting
             gamma='scale',
             random_state=42,
             probability=True,
             class_weight='balanced'
         ),
         'ANN': MLPClassifier(
-            hidden_layer_sizes=(100, 50),
+            hidden_layer_sizes=(32,),  # Single small layer
             activation='relu',
             solver='adam',
-            max_iter=200,
+            max_iter=1000,
             random_state=42,
-            early_stopping=True
+            early_stopping=True,
+            alpha=0.01  # Regularization
         )
     }
     return classifiers
@@ -322,7 +324,7 @@ def main():
     
     # Preprocess features (NOW PASSING y_train)
     X_train_proc, X_test_proc, scaler, selector = preprocess_features(
-        X_train, X_test, y_train, use_feature_selection=True, k_features=80
+        X_train, X_test, y_train, use_feature_selection=False
     )
     
     # Train and evaluate

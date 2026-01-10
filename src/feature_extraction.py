@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 import pickle
 from sklearn.model_selection import train_test_split
+import cv2
 
 # Paths
 DATA_DIR = "data"
@@ -131,53 +132,186 @@ def extract_texture_features(image):
     
     return np.array(features)
 
-def extract_shape_features(image):
-    """
-    Improved shape features:
-    - fill ratio
-    - number of connected components
-    - largest component aspect ratio
-    - edge density
-    """
-    from scipy import ndimage
+def segment_hand(image):
+    """Isolate hand from background using skin color segmentation"""
+    # Convert to YCrCb for better skin detection
+    ycrcb = cv2.cvtColor(image, cv2.COLOR_RGB2YCrCb)
+    
+    # Skin color thresholds in YCrCb
+    lower = np.array([0, 133, 77], dtype=np.uint8)
+    upper = np.array([255, 173, 127], dtype=np.uint8)
+    
+    # Create mask
+    mask = cv2.inRange(ycrcb, lower, upper)
+    
+    # Clean up mask
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    
+    return mask
 
+def get_hand_contour(mask):
+    """Find the largest contour (hand)"""
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    return max(contours, key=cv2.contourArea)
+
+def extract_convex_hull_features(contour):
+    """Extract convex hull and convexity defects"""
+    if contour is None or len(contour) < 10:
+        return [0, 0, 0]
+    
+    hull = cv2.convexHull(contour, returnPoints=False)
+    if len(hull) < 4:
+        return [0, 0, 0]
+    
+    defects = cv2.convexityDefects(contour, hull)
+    
+    if defects is None:
+        return [0, 0, 0]
+    
+    # Count significant defects (deep valleys between fingers)
+    significant_defects = 0
+    total_depth = 0
+    
+    for i in range(defects.shape[0]):
+        s, e, f, d = defects[i, 0]
+        depth = d / 256.0  # Convert to actual distance
+        if depth > 10:  # Threshold for significant defect
+            significant_defects += 1
+            total_depth += depth
+    
+    avg_depth = total_depth / max(1, significant_defects)
+    
+    return [significant_defects, avg_depth, len(hull)]
+
+def extract_bounding_box_features(contour):
+    """Extract bounding box aspect ratio"""
+    if contour is None:
+        return [1.0, 0]
+    
+    x, y, w, h = cv2.boundingRect(contour)
+    aspect_ratio = w / max(1, h)
+    area = cv2.contourArea(contour)
+    bbox_area = w * h
+    extent = area / max(1, bbox_area)
+    
+    return [aspect_ratio, extent]
+
+def extract_area_ratio_features(contour):
+    """Extract area ratios (solidity)"""
+    if contour is None:
+        return [0, 0]
+    
+    area = cv2.contourArea(contour)
+    hull = cv2.convexHull(contour)
+    hull_area = cv2.contourArea(hull)
+    
+    solidity = area / max(1, hull_area)
+    perimeter = cv2.arcLength(contour, True)
+    compactness = (4 * np.pi * area) / max(1, perimeter ** 2)
+    
+    return [solidity, compactness]
+
+def extract_centroid_distance_profile(contour):
+    """Extract distance profile from centroid"""
+    if contour is None or len(contour) < 10:
+        return [0, 0, 0]
+    
+    # Calculate centroid
+    M = cv2.moments(contour)
+    if M['m00'] == 0:
+        return [0, 0, 0]
+    
+    cx = int(M['m10'] / M['m00'])
+    cy = int(M['m01'] / M['m00'])
+    
+    # Calculate distances from centroid to contour points
+    distances = []
+    for point in contour:
+        x, y = point[0]
+        dist = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+        distances.append(dist)
+    
+    distances = np.array(distances)
+    
+    # Find peaks (potential fingertips)
+    mean_dist = np.mean(distances)
+    std_dist = np.std(distances)
+    peaks = np.sum(distances > (mean_dist + 0.5 * std_dist))
+    
+    return [np.mean(distances), std_dist, peaks]
+
+def extract_hu_moments(contour):
+    """Extract Hu moments (shape descriptors)"""
+    if contour is None:
+        return [0] * 7
+    
+    moments = cv2.moments(contour)
+    hu_moments = cv2.HuMoments(moments)
+    
+    # Log transform to make them more manageable
+    hu_moments = -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
+    
+    return hu_moments.flatten().tolist()
+
+def count_fingers(contour):
+    """Count extended fingers using k-curvature"""
+    if contour is None or len(contour) < 20:
+        return 0
+    
+    # Simplify contour
+    epsilon = 0.02 * cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(contour, epsilon, True)
+    
+    if len(approx) < 6:
+        return 0
+    
+    # Find convex hull and defects
+    hull = cv2.convexHull(contour, returnPoints=False)
+    if len(hull) < 4:
+        return 0
+    
+    defects = cv2.convexityDefects(contour, hull)
+    if defects is None:
+        return 0
+    
+    # Count fingertips (points between defects)
+    finger_count = 0
+    for i in range(defects.shape[0]):
+        s, e, f, d = defects[i, 0]
+        if d > 8000:  # Significant defect depth
+            finger_count += 1
+    
+    return min(finger_count, 5)  # Max 5 fingers
+
+def extract_geometric_features(image):
+    """Extract all geometric features from hand segmentation"""
     features = []
-
-    gray = np.mean(image, axis=2)
-
-    # adaptive threshold
-    threshold = np.mean(gray)
-    binary = (gray > threshold).astype(np.uint8)
-
-    # --- 1) fill ratio ---
-    fill_ratio = np.sum(binary) / binary.size
-    features.append(fill_ratio)
-
-    # --- 2) connected components ---
-    labeled, num_components = ndimage.label(binary)
-    features.append(num_components / 10.0)  # normalize
-
-    # --- 3) largest component aspect ratio ---
-    if num_components > 0:
-        sizes = ndimage.sum(binary, labeled, range(1, num_components+1))
-        largest = np.argmax(sizes) + 1
-        coords = np.column_stack(np.where(labeled == largest))
-        y_min, x_min = coords.min(axis=0)
-        y_max, x_max = coords.max(axis=0)
-        h = max(1, y_max - y_min)
-        w = max(1, x_max - x_min)
-        aspect_ratio = w / h
-    else:
-        aspect_ratio = 1.0
-
-    features.append(aspect_ratio)
-
-    # --- 4) edge density (strong separator scissors vs rock) ---
-    grad = np.hypot(np.diff(gray, axis=0, prepend=0), np.diff(gray, axis=1, prepend=0))
-    edge_density = np.sum(grad > 25) / grad.size
-    features.append(edge_density)
-
-    return np.array(features)
+    
+    # Segment hand
+    mask = segment_hand(image)
+    contour = get_hand_contour(mask)
+    
+    # Extract features
+    convex_features = extract_convex_hull_features(contour)
+    bbox_features = extract_bounding_box_features(contour)
+    area_features = extract_area_ratio_features(contour)
+    distance_features = extract_centroid_distance_profile(contour)
+    hu_features = extract_hu_moments(contour)
+    finger_count = count_fingers(contour)
+    
+    # Combine all geometric features
+    features.extend(convex_features)  # 3 features
+    features.extend(bbox_features)    # 2 features
+    features.extend(area_features)    # 2 features
+    features.extend(distance_features) # 3 features
+    features.extend(hu_features)      # 7 features
+    features.append(finger_count)     # 1 feature
+    
+    return np.array(features)  # Total: 18 features
 
 def extract_all_features(image):
     """
@@ -190,10 +324,10 @@ def extract_all_features(image):
     color_feat = extract_color_features(image_resized)
     edge_feat = extract_edge_features(image_resized)
     texture_feat = extract_texture_features(image_resized)
-    shape_feat = extract_shape_features(image_resized)
+    geometric_feat = extract_geometric_features(image_resized)
     
     # Combine all features
-    all_features = np.concatenate([color_feat, edge_feat, texture_feat, shape_feat])
+    all_features = np.concatenate([color_feat, edge_feat, texture_feat, geometric_feat])
     
     return all_features
 
@@ -247,7 +381,7 @@ def extract_features_from_dataset():
     print(f"  Color features: 63 (RGB stats + histograms)")
     print(f"  Edge features: 8 (gradient statistics)")
     print(f"  Texture features: 5 (variance + entropy)")
-    print(f"  Shape features: 5 (fill ratio + moments)")
+    print(f"  Geometric features: 18 (hand segmentation + shape analysis)")
     print(f"  Total: {X.shape[1]} features")
     
     return X, y

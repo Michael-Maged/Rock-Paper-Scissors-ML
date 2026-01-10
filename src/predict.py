@@ -128,12 +128,15 @@ def test_on_folder(folder_path, model, scaler, selector, class_names):
                 img_path, model, scaler, selector, class_names
             )
             
-            # Try to extract true class from filename
+            # Extract true class from filename (r=rock, p=paper, s=scissors)
             true_class = None
-            for cls in class_names:
-                if cls in img_file.lower():
-                    true_class = cls
-                    break
+            first_char = img_file.lower()[0]
+            if first_char == 'r':
+                true_class = 'rock'
+            elif first_char == 'p':
+                true_class = 'paper'
+            elif first_char == 's':
+                true_class = 'scissors'
             
             if probabilities is not None:
                 confidence = probabilities[class_names.index(predicted_class)] * 100
@@ -142,7 +145,7 @@ def test_on_folder(folder_path, model, scaler, selector, class_names):
                 result_str = f"{img_file}: {predicted_class}"
             
             if true_class:
-                result_str += f" [True: {true_class}]"
+                result_str += f" [Actual: {true_class}]"
                 if true_class == predicted_class:
                     result_str += " ✓"
                     correct += 1
@@ -164,8 +167,16 @@ def test_on_folder(folder_path, model, scaler, selector, class_names):
     if total > 0:
         accuracy = (correct / total) * 100
         print(f"\n{'='*70}")
-        print(f"ACCURACY: {accuracy:.2f}% ({correct}/{total})")
+        print(f"PREDICTION SUMMARY")
         print(f"{'='*70}")
+        print(f"Total images: {total}")
+        print(f"Correct predictions: {correct}")
+        print(f"Wrong predictions: {total - correct}")
+        print(f"Accuracy: {accuracy:.2f}%")
+        print(f"{'='*70}")
+    else:
+        print(f"\nNo images with recognizable naming pattern found.")
+        print(f"Expected: filenames starting with 'r' (rock), 'p' (paper), or 's' (scissors)")
 
 def main():
     """Main function"""

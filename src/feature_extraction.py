@@ -327,7 +327,7 @@ def extract_all_features(image):
     geometric_feat = extract_geometric_features(image_resized)
     
     # Combine all features
-    all_features = np.concatenate([color_feat, edge_feat, texture_feat, geometric_feat])
+    all_features = np.concatenate([geometric_feat])
     
     return all_features
 

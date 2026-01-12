@@ -1,207 +1,428 @@
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow info messages
-
 import numpy as np
-from skimage.feature import hog
-from skimage.filters import sobel
-from skimage.transform import resize
+from PIL import Image
 import pickle
-import os
-try:
-    from keras.applications import VGG16, ResNet50, MobileNetV2
-    from keras.applications.vgg16 import preprocess_input as vgg_preprocess
-    from keras.applications.resnet50 import preprocess_input as resnet_preprocess
-    from keras.applications.mobilenet_v2 import preprocess_input as mobilenet_preprocess
-    TENSORFLOW_AVAILABLE = True
-except ImportError:
-    VGG16 = ResNet50 = MobileNetV2 = None
-    vgg_preprocess = resnet_preprocess = mobilenet_preprocess = None
-    TENSORFLOW_AVAILABLE = False
+from sklearn.model_selection import train_test_split
+import cv2
 
-from explore_data import load_images_and_labels
+# Paths
+DATA_DIR = "data"
+FEATURES_DIR = "features"
 
-def extract_features_handcrafted(split="training", target_size=(224, 224)):
-    print(f"\n{'='*70}")
-    print(f"EXTRACTING HANDCRAFTED FEATURES FROM {split.upper()} SET")
-    print("="*70)
-    
-    images, labels = load_images_and_labels(split)
-    print(f"Loaded {len(images)} images")
-    
-    features_list = []
-    
-    for idx, img in enumerate(images):
-        if idx % 100 == 0:
-            print(f"  Processing {idx}/{len(images)}")
-        
-        # Resize and normalize
-        img_resized = resize(img, target_size, anti_aliasing=True)
-        
-        # Handle RGBA images (convert to RGB)
-        if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
-            img_resized = img_resized[:, :, :3]
-        
-        # Convert to grayscale for some features
-        if len(img_resized.shape) == 3:
-            gray = np.mean(img_resized, axis=2)
-        else:
-            gray = img_resized
-        
-        # 1. HOG Features
-        try:
-            hog_feat = hog(
-                gray, 
-                pixels_per_cell=(16, 16), 
-                cells_per_block=(2, 2), 
-                feature_vector=True
-            )
-        except Exception as e:
-            print(f"Warning: HOG extraction failed for image {idx}: {e}")
-            hog_feat = np.zeros(1296)  # Default HOG size
-        
-        # 2. Color Histogram
-        if len(img_resized.shape) == 3:
-            hist = []
-            for i in range(3):  # RGB channels
-                h, _ = np.histogram(img_resized[:,:,i], bins=32, range=(0, 1))
-                hist.append(h)
-            color_hist = np.concatenate(hist)
-        else:
-            color_hist, _ = np.histogram(img_resized, bins=32, range=(0, 1))
-        
-        # 3. Edge Features (Edge Density)
-        edges = sobel(gray)
-        edge_density = np.sum(edges > edges.mean()) / edges.size
-        
-        # 4. Statistical Features
-        mean_val = np.mean(gray)
-        std_val = np.std(gray)
-        
-        # Combine all features
-        combined = np.concatenate([
-            hog_feat, 
-            color_hist, 
-            [edge_density, mean_val, std_val]
-        ])
-        
-        features_list.append(combined)
-    
-    features = np.array(features_list)
-    print(f"  Feature shape: {features.shape}")
-    print(f"  Feature dimensionality: {features.shape[1]}")
-    
-    return features, labels
+# Create features directory
+os.makedirs(FEATURES_DIR, exist_ok=True)
 
-def extract_features_cnn(split="training", target_size=(224, 224), model_name='MobileNetV2'):
-    if not TENSORFLOW_AVAILABLE:
-        raise ImportError("TensorFlow not available. Install with: pip install tensorflow")
+# Class mapping
+CLASS_MAP = {'rock': 0, 'paper': 1, 'scissors': 2}
+
+def load_images_from_folder(folder_path):
+    images = []
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
     
-    print(f"\n{'='*70}")
-    print(f"EXTRACTING DEEP FEATURES ({model_name}) FROM {split.upper()} SET")
-    print("="*70)
+    for filename in sorted(os.listdir(folder_path)):
+        if filename.lower().endswith(valid_extensions):
+            img_path = os.path.join(folder_path, filename)
+            try:
+                img = Image.open(img_path)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                images.append(np.array(img))
+            except Exception as e:
+                print(f"Error loading {filename}: {e}")
     
-    # Load images
-    images, labels = load_images_and_labels(split)
-    print(f"Loaded {len(images)} images")
+    return images
+
+def resize_image(image, target_size=(100, 100)):
+    img_pil = Image.fromarray(image)
+    img_resized = img_pil.resize(target_size, Image.BILINEAR)
+    return np.array(img_resized)
+
+def segment_hand(image):
+    # Convert to YCrCb for better skin detection
+    ycrcb = cv2.cvtColor(image, cv2.COLOR_RGB2YCrCb)
     
-    # Prepare images
-    processed_images = []
-    for img in images:
-        # Resize
-        img_resized = resize(img, target_size, anti_aliasing=True)
-        
-        # Handle RGBA
-        if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
-            img_resized = img_resized[:, :, :3]
-        
-        # Ensure 3 channels (RGB)
-        if len(img_resized.shape) == 2:
-            img_resized = np.stack([img_resized] * 3, axis=-1)
-        
-        # Scale to 0-255
-        img_resized = (img_resized * 255).astype(np.uint8)
-        
-        processed_images.append(img_resized)
+    # Skin color thresholds in YCrCb
+    lower = np.array([0, 133, 77], dtype=np.uint8)
+    upper = np.array([255, 173, 127], dtype=np.uint8)
     
-    processed_images = np.array(processed_images)
-    print(f"Processed images shape: {processed_images.shape}")
+    # Create mask
+    mask = cv2.inRange(ycrcb, lower, upper)
     
-    # Load pre-trained model
-    print(f"Loading {model_name} model...")
-    if model_name == 'VGG16':
-        base_model = VGG16(weights='imagenet', include_top=False, 
-                          input_shape=(224, 224, 3))
-        preprocess_fn = vgg_preprocess
-    elif model_name == 'ResNet50':
-        base_model = ResNet50(weights='imagenet', include_top=False, 
-                             input_shape=(224, 224, 3))
-        preprocess_fn = resnet_preprocess
-    else:  # MobileNetV2
-        base_model = MobileNetV2(weights='imagenet', include_top=False, 
-                                input_shape=(224, 224, 3))
-        preprocess_fn = mobilenet_preprocess
+    # Clean up mask
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     
-    # Preprocess
-    processed_images = preprocess_fn(processed_images.astype(float))
+    return mask
+
+def get_hand_contour(mask):
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    return max(contours, key=cv2.contourArea)
+
+def extract_convex_hull_features(contour):
+    if contour is None or len(contour) < 10:
+        return [0, 0, 0]
+    
+    hull = cv2.convexHull(contour, returnPoints=False)
+    if len(hull) < 4:
+        return [0, 0, 0]
+    
+    defects = cv2.convexityDefects(contour, hull)
+    
+    if defects is None:
+        return [0, 0, 0]
+    
+    # Count significant defects (deep valleys between fingers)
+    significant_defects = 0
+    total_depth = 0
+    
+    for i in range(defects.shape[0]):
+        s, e, f, d = defects[i, 0]
+        depth = d / 256.0  # Convert to actual distance
+        if depth > 10:  # Threshold for significant defect
+            significant_defects += 1
+            total_depth += depth
+    
+    avg_depth = total_depth / max(1, significant_defects)
+    
+    return [significant_defects, avg_depth, len(hull)]
+
+def extract_bounding_box_features(contour):
+    if contour is None:
+        return [1.0, 0]
+    
+    x, y, w, h = cv2.boundingRect(contour)
+    aspect_ratio = w / max(1, h)
+    area = cv2.contourArea(contour)
+    bbox_area = w * h
+    extent = area / max(1, bbox_area)
+    
+    return [aspect_ratio, extent]
+
+def extract_area_ratio_features(contour):
+    if contour is None:
+        return [0, 0]
+    
+    area = cv2.contourArea(contour)
+    hull = cv2.convexHull(contour)
+    hull_area = cv2.contourArea(hull)
+    
+    solidity = area / max(1, hull_area)
+    perimeter = cv2.arcLength(contour, True)
+    compactness = (4 * np.pi * area) / max(1, perimeter ** 2)
+    
+    return [solidity, compactness]
+
+def extract_centroid_distance_profile(contour):
+    if contour is None or len(contour) < 10:
+        return [0, 0, 0]
+    
+    # Calculate centroid
+    M = cv2.moments(contour)
+    if M['m00'] == 0:
+        return [0, 0, 0]
+    
+    cx = int(M['m10'] / M['m00'])
+    cy = int(M['m01'] / M['m00'])
+    
+    # Calculate distances from centroid to contour points
+    distances = []
+    for point in contour:
+        x, y = point[0]
+        dist = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
+        distances.append(dist)
+    
+    distances = np.array(distances)
+    
+    # Find peaks (potential fingertips)
+    mean_dist = np.mean(distances)
+    std_dist = np.std(distances)
+    peaks = np.sum(distances > (mean_dist + 0.5 * std_dist))
+    
+    return [np.mean(distances), std_dist, peaks]
+
+def extract_hu_moments(contour):
+    if contour is None:
+        return [0] * 7
+    
+    moments = cv2.moments(contour)
+    hu_moments = cv2.HuMoments(moments)
+    
+    # Log transform to make them more manageable
+    hu_moments = -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
+    
+    return hu_moments.flatten().tolist()
+
+def count_fingers(contour):
+    if contour is None or len(contour) < 20:
+        return 0
+    
+    # Simplify contour
+    epsilon = 0.02 * cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(contour, epsilon, True)
+    
+    if len(approx) < 6:
+        return 0
+    
+    # Find convex hull and defects
+    hull = cv2.convexHull(contour, returnPoints=False)
+    if len(hull) < 4:
+        return 0
+    
+    defects = cv2.convexityDefects(contour, hull)
+    if defects is None:
+        return 0
+    
+    # Count fingertips (points between defects)
+    finger_count = 0
+    for i in range(defects.shape[0]):
+        s, e, f, d = defects[i, 0]
+        if d > 8000:  # Significant defect depth
+            finger_count += 1
+    
+    return min(finger_count, 5)  # Max 5 fingers
+
+def extract_fist_detection_features(image):
+    mask = segment_hand(image)
+    
+    if mask is None:
+        return [0, 0, 0]
+    
+    # 1. Compactness (rock should be very compact)
+    contour = get_hand_contour(mask)
+    if contour is None:
+        return [0, 0, 0]
+    
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    
+    if perimeter == 0:
+        return [0, 0, 0]
+    
+    # Circularity (rock is more circular)
+    circularity = (4 * np.pi * area) / (perimeter ** 2)
+    
+    # 2. Aspect ratio of bounding box
+    x, y, w, h = cv2.boundingRect(contour)
+    aspect_ratio = w / max(h, 1)
+    
+    # 3. Extent (how much of bounding box is filled)
+    rect_area = w * h
+    extent = area / max(rect_area, 1)
+    
+    return [circularity, aspect_ratio, extent]
+
+def extract_geometric_features(image):
+    features = []
+    
+    # Segment hand
+    mask = segment_hand(image)
+    contour = get_hand_contour(mask)
     
     # Extract features
-    print("Extracting features... This may take a few minutes.")
-    features = base_model.predict(processed_images, batch_size=32, verbose=1)
+    convex_features = extract_convex_hull_features(contour)
+    bbox_features = extract_bounding_box_features(contour)
+    area_features = extract_area_ratio_features(contour)
+    distance_features = extract_centroid_distance_profile(contour)
+    hu_features = extract_hu_moments(contour)
+    finger_count = count_fingers(contour)
+    fist_features = extract_fist_detection_features(image)
     
-    # Flatten features
-    features_flat = features.reshape(features.shape[0], -1)
+    # Combine all geometric features
+    features.extend(convex_features)  # 3 features
+    features.extend(bbox_features)    # 2 features
+    features.extend(area_features)    # 2 features
+    features.extend(distance_features) # 3 features
+    features.extend(hu_features)      # 7 features
+    features.append(finger_count)     # 1 feature
+    features.extend(fist_features)    # 3 features
     
-    print(f"Feature shape: {features_flat.shape}")
-    print(f"Feature dimensionality: {features_flat.shape[1]}")
-    
-    return features_flat, labels
+    return np.array(features)  # Total: 18 features
 
-def save_features(features, labels, filename):
-    os.makedirs('data/features', exist_ok=True)
-    filepath = f'data/features/{filename}'
+def extract_finger_counting_features(image):
+    mask = segment_hand(image)
+    contour = get_hand_contour(mask)
     
-    data = {
-        'features': features,
-        'labels': labels
+    if contour is None or len(contour) < 10:
+        return [0, 0, 0, 0, 0]
+    
+    # Find convex hull
+    hull = cv2.convexHull(contour, returnPoints=False)
+    
+    if len(hull) < 4:
+        return [0, 0, 0, 0, 0]
+    
+    # Get defects
+    defects = cv2.convexityDefects(contour, hull)
+    
+    if defects is None:
+        return [0, 0, 0, 0, 0]
+    
+    # Count significant defects (valleys between fingers)
+    significant_defects = 0
+    max_depth = 0
+    avg_depth = 0
+    depths = []
+    
+    for i in range(defects.shape[0]):
+        s, e, f, d = defects[i, 0]
+        depth = d / 256.0
+        
+        # Get the points
+        start = tuple(contour[s][0])
+        end = tuple(contour[e][0])
+        far = tuple(contour[f][0])
+        
+        # Calculate angle at the defect point
+        a = np.linalg.norm(np.array(start) - np.array(far))
+        b = np.linalg.norm(np.array(end) - np.array(far))
+        c = np.linalg.norm(np.array(start) - np.array(end))
+        
+        angle = np.arccos((a**2 + b**2 - c**2) / (2 * a * b + 1e-5))
+        angle_deg = np.degrees(angle)
+        
+        # Count only defects with reasonable depth and angle
+        if depth > 15 and angle_deg < 90:  # Deep valley with acute angle
+            significant_defects += 1
+            depths.append(depth)
+            max_depth = max(max_depth, depth)
+    
+    if depths:
+        avg_depth = np.mean(depths)
+    
+    # Estimate finger count (defects + 1)
+    estimated_fingers = min(significant_defects + 1, 5)
+    
+    return [
+        estimated_fingers,
+        significant_defects,
+        max_depth,
+        avg_depth,
+        len(depths)
+    ]
+
+def extract_all_features(image):
+    # Resize image for consistency
+    image_resized = resize_image(image, target_size=(100, 100))
+    
+    # Extract different feature types
+    geometric_feat = extract_geometric_features(image_resized)
+    finger_features = extract_finger_counting_features(image_resized)
+    
+    # Combine all features
+    all_features = np.concatenate([geometric_feat, finger_features])
+    
+    return all_features
+
+def extract_features_from_dataset():
+    print("="*70)
+    print("FEATURE EXTRACTION")
+    print("="*70)
+    
+    X = []  # Features
+    y = []  # Labels
+    
+    classes = ['rock', 'paper', 'scissors']
+    
+    for class_name in classes:
+        class_path = os.path.join(DATA_DIR, class_name)
+        
+        if not os.path.exists(class_path):
+            print(f"Warning: {class_path} not found!")
+            continue
+        
+        print(f"\nProcessing {class_name}...")
+        images = load_images_from_folder(class_path)
+        print(f"  Found {len(images)} images")
+        
+        for idx, image in enumerate(images):
+            if idx % 50 == 0 and idx > 0:
+                print(f"  Processed {idx}/{len(images)} images")
+            
+            try:
+                features = extract_all_features(image)
+                X.append(features)
+                y.append(CLASS_MAP[class_name])
+            except Exception as e:
+                print(f"  Error processing image {idx}: {e}")
+    
+    X = np.array(X)
+    y = np.array(y)
+    
+    print(f"\n" + "="*70)
+    print(f"FEATURE EXTRACTION COMPLETED")
+    print(f"="*70)
+    print(f"Total samples: {len(X)}")
+    print(f"Feature dimensions: {X.shape[1]}")
+    print(f"Classes: {np.unique(y)}")
+    
+    # Features
+    print(f"  Total: {X.shape[1]} features")
+    
+    return X, y
+
+def split_and_save_data(X, y, test_size=0.2, random_state=42):
+    print(f"\n" + "="*70)
+    print(f"SPLITTING DATASET")
+    print(f"="*70)
+    
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+    
+    print(f"Training samples: {len(X_train)}")
+    print(f"Testing samples: {len(X_test)}")
+    
+    # Save features
+    train_data = {
+        'X_train': X_train,
+        'y_train': y_train
     }
     
-    with open(filepath, 'wb') as f:
-        pickle.dump(data, f)
+    test_data = {
+        'X_test': X_test,
+        'y_test': y_test
+    }
     
-    print(f"Features saved to: {filepath}")
+    with open(os.path.join(FEATURES_DIR, 'train_features.pkl'), 'wb') as f:
+        pickle.dump(train_data, f)
+    
+    with open(os.path.join(FEATURES_DIR, 'test_features.pkl'), 'wb') as f:
+        pickle.dump(test_data, f)
+    
+    print(f"\nFeatures saved to: {FEATURES_DIR}/")
+    print(f"  - train_features.pkl")
+    print(f"  - test_features.pkl")
+    
+    return X_train, X_test, y_train, y_test
+
+def main():
+    # Check if data exists
+    if not os.path.exists(DATA_DIR):
+        print(f"Error: Data directory '{DATA_DIR}' not found!")
+        return
+    
+    # Extract features
+    X, y = extract_features_from_dataset()
+    
+    if len(X) == 0:
+        print("Error: No features extracted!")
+        return
+    
+    # Split and save
+    X_train, X_test, y_train, y_test = split_and_save_data(X, y)
+    
+    # Summary
+    print(f"\n" + "="*70)
+    print(f"SUMMARY")
+    print(f"="*70)
+    print(f"Feature extraction completed successfully!")
+    print(f"Total features per image: {X.shape[1]}")
+    print(f"Ready for training!")
+    print(f"\nNext step: Run train.py")
+    print(f"="*70)
 
 if __name__ == "__main__":
-    import os
-    os.makedirs('data/features', exist_ok=True)
-    
-    splits = ['training', 'validation', 'testing']
-    
-    print("="*70)
-    print("FEATURE EXTRACTION PIPELINE")
-    print("="*70)
-    print("\nChoose feature extraction method:")
-    print("1. Handcrafted features (HOG, Color Histograms, Edge features)")
-    print("2. Deep features (MobileNetV2 - recommended)")
-    print("3. Both (takes longer)")
-    
-    choice = input("\nEnter your choice (1/2/3): ").strip()
-    
-    for split in splits:
-        print(f"\n{'='*70}")
-        print(f"PROCESSING {split.upper()} SET")
-        print("="*70)
-        
-        if choice in ['1', '3']:
-            # Extract handcrafted features
-            features_hc, labels = extract_features_handcrafted(split)
-            save_features(features_hc, labels, f'{split}_handcrafted.pkl')
-        
-        if choice in ['2', '3']:
-            # Extract deep features
-            features_deep, labels = extract_features_cnn(split, model_name='MobileNetV2')
-            save_features(features_deep, labels, f'{split}_deep_mobilenet.pkl')
-    
-    print("\n" + "="*70)
-    print("FEATURE EXTRACTION COMPLETED!")
-    print("="*70)
-    print("\nExtracted features saved in: data/features/")
+    main()

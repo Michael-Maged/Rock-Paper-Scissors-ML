@@ -1,193 +1,242 @@
-from pathlib import Path
+import os
 import numpy as np
 from PIL import Image
-import joblib
-from skimage.feature import hog
-from skimage.filters import sobel
-from skimage.transform import resize
-import argparse
+import pickle
+import matplotlib.pyplot as plt
+import cv2
+from feature_extraction import extract_all_features
 
-MODEL_DIR = Path(__file__).parent.parent / "models"
-LABEL_MAP = {0: "rock", 1: "paper", 2: "scissors"}
+# Paths
+MODELS_DIR = "models"
 
-def extract_features_from_image(img_path, target_size=(224, 224)):
-    """Extract handcrafted features from a single image"""
+def load_model():
+    print("="*70)
+    print("LOADING TRAINED MODEL")
+    print("="*70)
     
+    model_path = os.path.join(MODELS_DIR, 'best_model.pkl')
+    
+    if not os.path.exists(model_path):
+        print(f"Error: Model not found at {model_path}")
+        print("Please run train.py first.")
+        return None
+    
+    with open(model_path, 'rb') as f:
+        model_data = pickle.load(f)
+    
+    model = model_data['model']
+    scaler = model_data['scaler']
+    selector = model_data['selector']
+    class_names = model_data['class_names']
+    
+    print(f"Model loaded: {type(model).__name__}")
+    print(f"Classes: {class_names}")
+    
+    return model, scaler, selector, class_names
+
+def predict_image(image_path, model, scaler, selector, class_names):
     # Load image
-    img = Image.open(img_path)
+    img = Image.open(image_path)
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
     img_array = np.array(img)
     
-    # Resize and normalize
-    img_resized = resize(img_array, target_size, anti_aliasing=True)
-    if len(img_resized.shape) == 3 and img_resized.shape[2] == 4:
-        img_resized = img_resized[:, :, :3]
-    
-    # Grayscale
-    gray = np.mean(img_resized, axis=2) if len(img_resized.shape) == 3 else img_resized
-    
-    # HOG features
-    hog_feat = hog(gray, pixels_per_cell=(16, 16), cells_per_block=(2, 2), feature_vector=True)
-    
-    # Color histogram
-    if len(img_resized.shape) == 3:
-        hist = [np.histogram(img_resized[:,:,i], bins=32, range=(0, 1))[0] for i in range(3)]
-        color_hist = np.concatenate(hist)
-    else:
-        color_hist = np.histogram(img_resized, bins=32, range=(0, 1))[0]
-    
-    # Edge density
-    edges = sobel(gray)
-    edge_density = np.sum(edges > edges.mean()) / edges.size
-    
-    combined = np.concatenate([hog_feat, color_hist, [edge_density]])
-    
-    return combined.reshape(1, -1)
-
-def load_model_and_scaler():
-    """Load the trained model and scaler"""
-    
-    model_path = MODEL_DIR / "best_model.pkl"
-    scaler_path = MODEL_DIR / "scaler.pkl"
-    
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model not found at {model_path}. Please train the model first.")
-    
-    if not scaler_path.exists():
-        raise FileNotFoundError(f"Scaler not found at {scaler_path}. Please train the model first.")
-    
-    model = joblib.load(model_path)
-    scaler = joblib.load(scaler_path)
-    
-    return model, scaler
-
-def predict_single_image(img_path, model=None, scaler=None, verbose=True):
-    """Predict the gesture in a single image"""
-    
-    # Load model and scaler if not provided
-    if model is None or scaler is None:
-        model, scaler = load_model_and_scaler()
-    
-    # Extract features
-    if verbose:
-        print(f"Processing image: {img_path}")
-    features = extract_features_from_image(img_path)
+    # Extract features (MUST match training)
+    features = extract_all_features(img_array)
+    features = features.reshape(1, -1)
     
     # Scale features
     features_scaled = scaler.transform(features)
     
+    # Apply feature selection if it was used
+    if selector is not None:
+        features_final = selector.transform(features_scaled)
+    else:
+        features_final = features_scaled
+    
     # Predict
-    prediction = model.predict(features_scaled)[0]
+    prediction = model.predict(features_final)[0]
+    predicted_class = class_names[prediction]
     
     # Get probabilities if available
     if hasattr(model, 'predict_proba'):
-        probabilities = model.predict_proba(features_scaled)[0]
+        probabilities = model.predict_proba(features_final)[0]
     else:
         probabilities = None
     
-    gesture = LABEL_MAP[prediction]
-    
-    if verbose:
-        print(f"\nPrediction: {gesture.upper()}")
-        if probabilities is not None:
-            print("\nConfidence scores:")
-            for label_idx, label_name in LABEL_MAP.items():
-                print(f"  {label_name}: {probabilities[label_idx]:.2%}")
-    
-    return gesture, probabilities
+    return predicted_class, probabilities, img
 
-def predict_batch(image_dir, model=None, scaler=None):
-    """Predict gestures for all images in a directory"""
+def visualize_prediction(image, predicted_class, probabilities, class_names):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
-    image_dir = Path(image_dir)
+    # Display image
+    ax1.imshow(image)
+    ax1.set_title(f'Predicted: {predicted_class.upper()}',
+                  fontsize=16, fontweight='bold', color='green')
+    ax1.axis('off')
     
-    if not image_dir.exists():
-        raise FileNotFoundError(f"Directory not found: {image_dir}")
+    # Display probabilities
+    if probabilities is not None:
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1']
+        bars = ax2.barh(class_names, probabilities * 100, color=colors)
+        ax2.set_xlabel('Probability (%)', fontsize=12, fontweight='bold')
+        ax2.set_title('Class Probabilities', fontsize=14, fontweight='bold')
+        ax2.set_xlim([0, 100])
+        
+        for bar, prob in zip(bars, probabilities):
+            width = bar.get_width()
+            ax2.text(width + 2, bar.get_y() + bar.get_height()/2,
+                    f'{prob*100:.1f}%', va='center', fontweight='bold')
+    else:
+        ax2.text(0.5, 0.5, f'Predicted:\n{predicted_class.upper()}',
+                ha='center', va='center', fontsize=18, fontweight='bold')
+        ax2.axis('off')
     
-    # Load model and scaler once
-    if model is None or scaler is None:
-        model, scaler = load_model_and_scaler()
+    plt.tight_layout()
+    plt.show()
+
+def test_on_folder(folder_path, model, scaler, selector, class_names):
+    print(f"\n{'='*70}")
+    print(f"TESTING ON FOLDER: {folder_path}")
+    print(f"{'='*70}")
     
-    # Get all image files
-    image_files = list(image_dir.glob("*.png")) + list(image_dir.glob("*.jpg")) + list(image_dir.glob("*.jpeg"))
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
+    image_files = [f for f in os.listdir(folder_path)
+                   if f.lower().endswith(valid_extensions)]
     
     if not image_files:
-        print(f"No images found in {image_dir}")
+        print("No images found in folder!")
         return
     
-    print(f"Found {len(image_files)} images")
-    print("="*60)
+    print(f"Found {len(image_files)} images\n")
     
     results = []
+    correct = 0
+    total = 0
     
-    for img_path in image_files:
-        gesture, probabilities = predict_single_image(img_path, model, scaler, verbose=False)
-        results.append({
-            "filename": img_path.name,
-            "prediction": gesture,
-            "probabilities": probabilities
-        })
-        
-        print(f"{img_path.name:30s} -> {gesture.upper()}")
-    
-    print("="*60)
-    
-    # Summary
-    predictions = [r["prediction"] for r in results]
-    print("\nSummary:")
-    for gesture in ["rock", "paper", "scissors"]:
-        count = predictions.count(gesture)
-        print(f"  {gesture}: {count} ({count/len(predictions)*100:.1f}%)")
-    
-    return results
-
-def interactive_mode():
-    """Interactive prediction mode"""
-    
-    print("="*60)
-    print("ROCK PAPER SCISSORS - INTERACTIVE PREDICTION")
-    print("="*60)
-    
-    # Load model and scaler once
-    model, scaler = load_model_and_scaler()
-    print("\nModel loaded successfully!")
-    
-    while True:
-        print("\n" + "-"*60)
-        img_path = input("Enter image path (or 'quit' to exit): ").strip()
-        
-        if img_path.lower() in ['quit', 'exit', 'q']:
-            print("Goodbye!")
-            break
-        
-        if not Path(img_path).exists():
-            print(f"Error: File not found - {img_path}")
-            continue
+    for img_file in image_files:
+        img_path = os.path.join(folder_path, img_file)
         
         try:
-            predict_single_image(img_path, model, scaler, verbose=True)
+            predicted_class, probabilities, _ = predict_image(
+                img_path, model, scaler, selector, class_names
+            )
+            
+            # Extract true class from filename (r=rock, p=paper, s=scissors)
+            true_class = None
+            first_char = img_file.lower()[0]
+            if first_char == 'r':
+                true_class = 'rock'
+            elif first_char == 'p':
+                true_class = 'paper'
+            elif first_char == 's':
+                true_class = 'scissors'
+            
+            if probabilities is not None:
+                confidence = probabilities[class_names.index(predicted_class)] * 100
+                result_str = f"{img_file}: {predicted_class} ({confidence:.1f}%)"
+            else:
+                result_str = f"{img_file}: {predicted_class}"
+            
+            if true_class:
+                result_str += f" [Actual: {true_class}]"
+                if true_class == predicted_class:
+                    result_str += " ✓"
+                    correct += 1
+                else:
+                    result_str += " ✗"
+                total += 1
+            
+            print(result_str)
+            results.append({
+                'file': img_file,
+                'predicted': predicted_class,
+                'true': true_class,
+                'correct': true_class == predicted_class if true_class else None
+            })
+            
         except Exception as e:
-            print(f"Error processing image: {e}")
+            print(f"Error processing {img_file}: {e}")
+    
+    if total > 0:
+        accuracy = (correct / total) * 100
+        print(f"\n{'='*70}")
+        print(f"PREDICTION SUMMARY")
+        print(f"{'='*70}")
+        print(f"Total images: {total}")
+        print(f"Correct predictions: {correct}")
+        print(f"Wrong predictions: {total - correct}")
+        print(f"Accuracy: {accuracy:.2f}%")
+        print(f"{'='*70}")
+    else:
+        print(f"\nNo images with recognizable naming pattern found.")
+        print(f"Expected: filenames starting with 'r' (rock), 'p' (paper), or 's' (scissors)")
 
 def main():
-    parser = argparse.ArgumentParser(description="Rock Paper Scissors Gesture Prediction")
-    parser.add_argument("--image", "-i", type=str, help="Path to a single image")
-    parser.add_argument("--batch", "-b", type=str, help="Path to directory with images")
-    parser.add_argument("--interactive", "-int", action="store_true", help="Interactive mode")
+    print("="*70)
+    print("ROCK-PAPER-SCISSORS PREDICTION")
+    print("PURE MACHINE LEARNING APPROACH")
+    print("="*70)
     
-    args = parser.parse_args()
+    # Load model
+    model_data = load_model()
+    if model_data is None:
+        return
     
-    if args.image:
-        predict_single_image(args.image)
-    elif args.batch:
-        predict_batch(args.batch)
-    elif args.interactive:
-        interactive_mode()
-    else:
-        print("Please specify --image, --batch, or --interactive mode")
-        print("Examples:")
-        print("  python predict.py --image path/to/image.png")
-        print("  python predict.py --batch path/to/images/")
-        print("  python predict.py --interactive")
+    model, scaler, selector, class_names = model_data
+    
+    # Prediction options
+    print(f"\n{'='*70}")
+    print("PREDICTION OPTIONS")
+    print("="*70)
+    print("1. Predict single image")
+    print("2. Test on folder")
+    
+    choice = input("\nSelect option (1/2): ").strip()
+    
+    if choice == '1':
+        # Single image prediction
+        image_path = input("Enter image path: ").strip()
+        
+        if not os.path.exists(image_path):
+            print(f"Error: Image not found at {image_path}")
+            return
+        
+        try:
+            predicted_class, probabilities, img = predict_image(
+                image_path, model, scaler, selector, class_names
+            )
+            
+            print(f"\n{'='*70}")
+            print(f"PREDICTION RESULT")
+            print(f"{'='*70}")
+            print(f"Predicted class: {predicted_class.upper()}")
+            
+            if probabilities is not None:
+                print("\nProbabilities:")
+                for cls, prob in zip(class_names, probabilities):
+                    print(f"  {cls}: {prob*100:.2f}%")
+            print(f"{'='*70}")
+            
+            # Visualize
+            visualize_prediction(img, predicted_class, probabilities, class_names)
+            
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    elif choice == '2':
+        # Test on folder
+        folder_path = input("Enter folder path: ").strip()
+        
+        if not os.path.exists(folder_path):
+            print(f"Error: Folder not found at {folder_path}")
+            return
+        
+        test_on_folder(folder_path, model, scaler, selector, class_names)
+    
+    print(f"\n{'='*70}")
+    print("PREDICTION COMPLETED!")
+    print("="*70)
 
 if __name__ == "__main__":
     main()

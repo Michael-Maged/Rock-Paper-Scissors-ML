@@ -30,7 +30,6 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 CLASS_NAMES = ['rock', 'paper', 'scissors']
 
 def load_features():
-    """Load extracted features"""
     print("="*70)
     print("LOADING FEATURES")
     print("="*70)
@@ -53,9 +52,6 @@ def load_features():
     return X_train, X_test, y_train, y_test
 
 def preprocess_features(X_train, X_test, y_train, use_feature_selection=True, k_features=50):
-    """
-    Preprocess features: scaling and feature selection
-    """
     print(f"\n" + "="*70)
     print(f"FEATURE PREPROCESSING")
     print(f"="*70)
@@ -79,7 +75,6 @@ def preprocess_features(X_train, X_test, y_train, use_feature_selection=True, k_
         return X_train_scaled, X_test_scaled, scaler, None
 
 def get_classifiers():
-    """Simplified classifiers focused on small dataset"""
     classifiers = {
         'Decision Tree': DecisionTreeClassifier(
             max_depth=5,  # Shallower to avoid overfitting
@@ -130,7 +125,6 @@ def get_classifiers():
     return classifiers
 
 def plot_confusion_matrix(cm, class_names, classifier_name):
-    """Plot and save confusion matrix"""
     plt.figure(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=class_names, yticklabels=class_names,
@@ -145,7 +139,6 @@ def plot_confusion_matrix(cm, class_names, classifier_name):
     plt.close()
 
 def train_and_evaluate(X_train, y_train, X_test, y_test):
-    """Train all classifiers and evaluate"""
     classifiers = get_classifiers()
     
     print(f"\n" + "="*70)
@@ -208,7 +201,6 @@ def train_and_evaluate(X_train, y_train, X_test, y_test):
     return results, trained_models
 
 def save_results(results):
-    """Save results to CSV and generate comparison plots"""
     results_df = pd.DataFrame(results)
     results_df = results_df.sort_values('Test Accuracy (%)', ascending=False)
     
@@ -288,7 +280,6 @@ def save_results(results):
     return results_df
 
 def save_best_model(results_df, trained_models, scaler, selector):
-    """Save the best performing model"""
     best_model_name = results_df.iloc[0]['Classifier']
     best_model = trained_models[best_model_name]
     best_accuracy = results_df.iloc[0]['Test Accuracy (%)']
@@ -312,7 +303,6 @@ def save_best_model(results_df, trained_models, scaler, selector):
     print(f"\nBest model saved to: {filename}")
 
 def main():
-    """Main function"""
     # Check if features exist
     if not os.path.exists(FEATURES_DIR):
         print(f"Error: Features directory '{FEATURES_DIR}' not found!")

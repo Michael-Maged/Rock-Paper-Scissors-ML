@@ -16,7 +16,6 @@ os.makedirs(FEATURES_DIR, exist_ok=True)
 CLASS_MAP = {'rock': 0, 'paper': 1, 'scissors': 2}
 
 def load_images_from_folder(folder_path):
-    """Load all images from a folder"""
     images = []
     valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp')
     
@@ -34,106 +33,11 @@ def load_images_from_folder(folder_path):
     return images
 
 def resize_image(image, target_size=(100, 100)):
-    """Resize image to target size using PIL"""
     img_pil = Image.fromarray(image)
     img_resized = img_pil.resize(target_size, Image.BILINEAR)
     return np.array(img_resized)
 
-def extract_color_features(image):
-    """
-    Extract color-based features
-    - Mean, std, min, max for each RGB channel
-    - Color histograms
-    """
-    features = []
-    
-    # Separate RGB channels
-    r_channel = image[:, :, 0]
-    g_channel = image[:, :, 1]
-    b_channel = image[:, :, 2]
-    
-    # Statistical features for each channel
-    for channel in [r_channel, g_channel, b_channel]:
-        features.append(np.mean(channel))
-        features.append(np.std(channel))
-        features.append(np.min(channel))
-        features.append(np.max(channel))
-        features.append(np.median(channel))
-    
-    # Color histograms (16 bins per channel)
-    for channel in [r_channel, g_channel, b_channel]:
-        hist, _ = np.histogram(channel.flatten(), bins=16, range=(0, 256))
-        hist = hist / (hist.sum() + 1e-7)  # Normalize
-        features.extend(hist)
-    
-    return np.array(features)
-
-def extract_edge_features(image):
-    """
-    Extract simple edge features using gradients
-    """
-    features = []
-    
-    # Convert to grayscale
-    gray = np.mean(image, axis=2)
-    
-    # Compute horizontal and vertical gradients (simple difference)
-    grad_x = np.abs(np.diff(gray, axis=1))
-    grad_y = np.abs(np.diff(gray, axis=0))
-    
-    # Edge statistics
-    features.append(np.mean(grad_x))
-    features.append(np.std(grad_x))
-    features.append(np.max(grad_x))
-    
-    features.append(np.mean(grad_y))
-    features.append(np.std(grad_y))
-    features.append(np.max(grad_y))
-    
-    # Edge density (pixels with high gradient)
-    threshold = 30
-    edge_pixels_x = np.sum(grad_x > threshold)
-    edge_pixels_y = np.sum(grad_y > threshold)
-    features.append(edge_pixels_x / grad_x.size)
-    features.append(edge_pixels_y / grad_y.size)
-    
-    return np.array(features)
-
-def extract_texture_features(image):
-    """
-    Extract simple texture features
-    """
-    features = []
-    
-    # Convert to grayscale
-    gray = np.mean(image, axis=2)
-    
-    # Compute local variance (texture measure)
-    # Using 5x5 patches
-    h, w = gray.shape
-    patch_size = 5
-    variances = []
-    
-    for i in range(0, h - patch_size, patch_size):
-        for j in range(0, w - patch_size, patch_size):
-            patch = gray[i:i+patch_size, j:j+patch_size]
-            variances.append(np.var(patch))
-    
-    features.append(np.mean(variances))
-    features.append(np.std(variances))
-    features.append(np.max(variances))
-    features.append(np.min(variances))
-    
-    # Image entropy (measure of randomness)
-    hist, _ = np.histogram(gray.flatten(), bins=256, range=(0, 256))
-    hist = hist / (hist.sum() + 1e-7)
-    entropy = -np.sum(hist * np.log2(hist + 1e-7))
-    features.append(entropy)
-    
-    return np.array(features)
-
 def segment_hand(image):
-    """Isolate hand from background using skin color segmentation"""
     # Convert to YCrCb for better skin detection
     ycrcb = cv2.cvtColor(image, cv2.COLOR_RGB2YCrCb)
     
@@ -152,14 +56,12 @@ def segment_hand(image):
     return mask
 
 def get_hand_contour(mask):
-    """Find the largest contour (hand)"""
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
     return max(contours, key=cv2.contourArea)
 
 def extract_convex_hull_features(contour):
-    """Extract convex hull and convexity defects"""
     if contour is None or len(contour) < 10:
         return [0, 0, 0]
     
@@ -188,7 +90,6 @@ def extract_convex_hull_features(contour):
     return [significant_defects, avg_depth, len(hull)]
 
 def extract_bounding_box_features(contour):
-    """Extract bounding box aspect ratio"""
     if contour is None:
         return [1.0, 0]
     
@@ -201,7 +102,6 @@ def extract_bounding_box_features(contour):
     return [aspect_ratio, extent]
 
 def extract_area_ratio_features(contour):
-    """Extract area ratios (solidity)"""
     if contour is None:
         return [0, 0]
     
@@ -216,7 +116,6 @@ def extract_area_ratio_features(contour):
     return [solidity, compactness]
 
 def extract_centroid_distance_profile(contour):
-    """Extract distance profile from centroid"""
     if contour is None or len(contour) < 10:
         return [0, 0, 0]
     
@@ -245,7 +144,6 @@ def extract_centroid_distance_profile(contour):
     return [np.mean(distances), std_dist, peaks]
 
 def extract_hu_moments(contour):
-    """Extract Hu moments (shape descriptors)"""
     if contour is None:
         return [0] * 7
     
@@ -258,7 +156,6 @@ def extract_hu_moments(contour):
     return hu_moments.flatten().tolist()
 
 def count_fingers(contour):
-    """Count extended fingers using k-curvature"""
     if contour is None or len(contour) < 20:
         return 0
     
@@ -288,7 +185,6 @@ def count_fingers(contour):
     return min(finger_count, 5)  # Max 5 fingers
 
 def extract_fist_detection_features(image):
-    """Specific features to detect closed fist (rock)"""
     mask = segment_hand(image)
     
     if mask is None:
@@ -319,7 +215,6 @@ def extract_fist_detection_features(image):
     return [circularity, aspect_ratio, extent]
 
 def extract_geometric_features(image):
-    """Extract all geometric features from hand segmentation"""
     features = []
     
     # Segment hand
@@ -347,7 +242,6 @@ def extract_geometric_features(image):
     return np.array(features)  # Total: 18 features
 
 def extract_finger_counting_features(image):
-    """Better finger detection"""
     mask = segment_hand(image)
     contour = get_hand_contour(mask)
     
@@ -410,16 +304,10 @@ def extract_finger_counting_features(image):
     ]
 
 def extract_all_features(image):
-    """
-    Extract all features from an image
-    """
     # Resize image for consistency
     image_resized = resize_image(image, target_size=(100, 100))
     
     # Extract different feature types
-    color_feat = extract_color_features(image_resized)
-    edge_feat = extract_edge_features(image_resized)
-    texture_feat = extract_texture_features(image_resized)
     geometric_feat = extract_geometric_features(image_resized)
     finger_features = extract_finger_counting_features(image_resized)
     
@@ -429,11 +317,8 @@ def extract_all_features(image):
     return all_features
 
 def extract_features_from_dataset():
-    """
-    Extract features from all images in the dataset
-    """
     print("="*70)
-    print("FEATURE EXTRACTION - PURE MACHINE LEARNING")
+    print("FEATURE EXTRACTION")
     print("="*70)
     
     X = []  # Features
@@ -473,20 +358,12 @@ def extract_features_from_dataset():
     print(f"Feature dimensions: {X.shape[1]}")
     print(f"Classes: {np.unique(y)}")
     
-    # Feature breakdown
-    print(f"\nFeature composition:")
-    print(f"  Color features: 63 (RGB stats + histograms)")
-    print(f"  Edge features: 8 (gradient statistics)")
-    print(f"  Texture features: 5 (variance + entropy)")
-    print(f"  Geometric features: 18 (hand segmentation + shape analysis)")
+    # Features
     print(f"  Total: {X.shape[1]} features")
     
     return X, y
 
 def split_and_save_data(X, y, test_size=0.2, random_state=42):
-    """
-    Split data into train and test sets and save
-    """
     print(f"\n" + "="*70)
     print(f"SPLITTING DATASET")
     print(f"="*70)
@@ -522,7 +399,6 @@ def split_and_save_data(X, y, test_size=0.2, random_state=42):
     return X_train, X_test, y_train, y_test
 
 def main():
-    """Main function"""
     # Check if data exists
     if not os.path.exists(DATA_DIR):
         print(f"Error: Data directory '{DATA_DIR}' not found!")

@@ -9,10 +9,7 @@ from feature_extraction import extract_all_features
 # Paths
 MODELS_DIR = "models"
 
-
-
 def load_model():
-    """Load the trained model"""
     print("="*70)
     print("LOADING TRAINED MODEL")
     print("="*70)
@@ -38,7 +35,6 @@ def load_model():
     return model, scaler, selector, class_names
 
 def predict_image(image_path, model, scaler, selector, class_names):
-    """Predict the class of a single image"""
     # Load image
     img = Image.open(image_path)
     if img.mode != 'RGB':
@@ -71,7 +67,6 @@ def predict_image(image_path, model, scaler, selector, class_names):
     return predicted_class, probabilities, img
 
 def visualize_prediction(image, predicted_class, probabilities, class_names):
-    """Visualize prediction result"""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     
     # Display image
@@ -101,7 +96,6 @@ def visualize_prediction(image, predicted_class, probabilities, class_names):
     plt.show()
 
 def test_on_folder(folder_path, model, scaler, selector, class_names):
-    """Test on all images in a folder"""
     print(f"\n{'='*70}")
     print(f"TESTING ON FOLDER: {folder_path}")
     print(f"{'='*70}")
@@ -179,7 +173,6 @@ def test_on_folder(folder_path, model, scaler, selector, class_names):
         print(f"Expected: filenames starting with 'r' (rock), 'p' (paper), or 's' (scissors)")
 
 def main():
-    """Main function"""
     print("="*70)
     print("ROCK-PAPER-SCISSORS PREDICTION")
     print("PURE MACHINE LEARNING APPROACH")

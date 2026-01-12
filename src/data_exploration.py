@@ -12,7 +12,6 @@ RESULTS_DIR = "results"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
 def load_images_from_folder(folder_path):
-    """Load all images from a folder"""
     images = []
     filenames = []
     
@@ -34,9 +33,8 @@ def load_images_from_folder(folder_path):
     return images, filenames
 
 def explore_dataset():
-    """Explore the dataset structure and properties"""
     print("="*70)
-    print("DATASET EXPLORATION - PURE MACHINE LEARNING APPROACH")
+    print("DATASET EXPLORATION")
     print("="*70)
     
     classes = ['rock', 'paper', 'scissors']
@@ -73,7 +71,6 @@ def explore_dataset():
     return class_data
 
 def visualize_class_distribution(class_data):
-    """Visualize the distribution of samples across classes"""
     print("\n" + "="*70)
     print("GENERATING CLASS DISTRIBUTION PLOT")
     print("="*70)
@@ -103,7 +100,6 @@ def visualize_class_distribution(class_data):
     plt.close()
 
 def visualize_sample_images(class_data, samples_per_class=3):
-    """Display sample images from each class"""
     print("\n" + "="*70)
     print("GENERATING SAMPLE IMAGES VISUALIZATION")
     print("="*70)
@@ -137,7 +133,6 @@ def visualize_sample_images(class_data, samples_per_class=3):
     plt.close()
 
 def analyze_image_statistics(class_data):
-    """Analyze basic statistics of images"""
     print("\n" + "="*70)
     print("IMAGE STATISTICS ANALYSIS")
     print("="*70)
@@ -169,10 +164,8 @@ def analyze_image_statistics(class_data):
         print(f"  Blue channel avg:  {np.mean(blue_means):.1f}")
 
 def main():
-    """Main function"""
     print("\n" + "="*70)
     print("ROCK-PAPER-SCISSORS DETECTION")
-    print("PURE MACHINE LEARNING APPROACH")
     print("="*70)
     
     # Check if data directory exists

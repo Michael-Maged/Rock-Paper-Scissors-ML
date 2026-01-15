@@ -67,10 +67,14 @@ cd Rock-Paper-Scissors-ML
 python -m venv venv
 
 # Activate virtual environment
-# On Windows:
+# On Windows (Command Prompt - RECOMMENDED):
 venv\Scripts\activate
 # On macOS/Linux:
 source venv/bin/activate
+
+# PowerShell users: First run this to allow scripts:
+ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+ venv\Scripts\Activate.ps1
 ```
 
 ### 3. Install Dependencies

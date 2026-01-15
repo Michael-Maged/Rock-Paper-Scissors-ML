@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 import cv2
 
 # Paths
-DATA_DIR = "data"
+DATA_DIR = "data/training"
 FEATURES_DIR = "features"
 
 # Create features directory

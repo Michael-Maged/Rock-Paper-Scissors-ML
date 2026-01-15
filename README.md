@@ -87,7 +87,8 @@ pip install -r requirements.txt
 pip install numpy opencv-python pillow scikit-learn matplotlib seaborn pandas xgboost
 
 # For MediaPipe approach (includes all above):
-pip install numpy opencv-python pillow scikit-learn matplotlib seaborn pandas xgboost mediapipe
+# IMPORTANT: If you have TensorFlow, uninstall it first: pip uninstall tensorflow
+pip install numpy opencv-python pillow scikit-learn matplotlib seaborn pandas xgboost mediapipe==0.10.13
 ```
 
 ## Requirements
@@ -98,14 +99,28 @@ pip install numpy opencv-python pillow scikit-learn matplotlib seaborn pandas xg
 ```
 
 ### Additional for MediaPipe approach
+
+**⚠️ IMPORTANT: MediaPipe Installation Instructions**
+
+MediaPipe has dependency conflicts with TensorFlow. Follow these steps:
+
 ```bash
-pip install mediapipe
+# If you have TensorFlow installed, uninstall it first:
+pip uninstall tensorflow
+
+# Install specific MediaPipe version that works:
+pip install mediapipe==0.10.13
 ```
 
-Or install all at once:
+**Alternative: Install all at once**
 ```bash
 pip install -r requirements.txt
 ```
+
+**Troubleshooting MediaPipe:**
+- If you get protobuf errors, run: `pip uninstall tensorflow` first
+- Use MediaPipe version 0.10.13 for best compatibility
+- Test installation: `python -c "import mediapipe as mp; print(mp.__version__)"`
 
 ## How to Run
 

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 
 # Paths
-DATA_DIR = "data"
+DATA_DIR = "data/training"
 RESULTS_DIR = "results"
 
 # Create results directory

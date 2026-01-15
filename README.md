@@ -53,6 +53,39 @@ data/
 - Support Vector Machine
 - Artificial Neural Network
 
+## Installation
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-username/Rock-Paper-Scissors-ML.git
+cd Rock-Paper-Scissors-ML
+```
+
+### 2. Create Virtual Environment
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+```bash
+# Install all requirements
+pip install -r requirements.txt
+
+# OR install manually:
+# For Geometric Features approach only:
+pip install numpy opencv-python pillow scikit-learn matplotlib seaborn pandas xgboost
+
+# For MediaPipe approach (includes all above):
+pip install numpy opencv-python pillow scikit-learn matplotlib seaborn pandas xgboost mediapipe
+```
+
 ## Requirements
 
 ### Basic Requirements (for Geometric Features approach)
